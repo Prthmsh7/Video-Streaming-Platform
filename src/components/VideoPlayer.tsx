@@ -597,7 +597,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               className="hidden"
             />
             
-            <div className="space-y-3">
+            {/* Scrollable container for videos */}
+            <div className={`space-y-3 ${upNextVideos.length > 3 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
               {upNextVideos.map((upNextVideo, index) => (
                 <div 
                   key={upNextVideo.id} 
