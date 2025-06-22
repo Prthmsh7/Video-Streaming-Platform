@@ -69,7 +69,29 @@ function App() {
   const upNextVideos = videoQueue.slice(currentVideoIndex + 1);
 
   return (
-    <div className="min-h-screen bg-dark-bg text-white">
+    <div className="min-h-screen bg-dark-bg text-text-primary">
+      {/* Header */}
+      <header className="glass border-b border-dark-border sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center">
+                <span className="text-white font-bold text-lg">V</span>
+              </div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                VisionStream
+              </h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className="hidden md:flex items-center space-x-2 text-text-secondary">
+                <div className="w-2 h-2 bg-secondary rounded-full animate-pulse"></div>
+                <span className="text-sm">Live Platform</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
       {currentVideo && (
         <VideoPlayer 
           video={currentVideo}
