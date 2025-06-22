@@ -3,7 +3,6 @@ import {
   ThumbsUp, 
   ThumbsDown, 
   Share, 
-  Download, 
   MoreHorizontal,
   Bell,
   ChevronDown,
@@ -411,8 +410,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center space-x-4 text-gray-400">
                 <span>{video.views}</span>
-                <span>•</span>
-                <span>{video.timestamp}</span>
               </div>
               
               <div className="flex items-center space-x-2">
@@ -428,11 +425,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <button className="flex items-center space-x-2 px-4 py-2 bg-dark-secondary hover:bg-dark-hover rounded-full transition-colors">
                   <Share size={20} />
                   <span>Share</span>
-                </button>
-                
-                <button className="flex items-center space-x-2 px-4 py-2 bg-dark-secondary hover:bg-dark-hover rounded-full transition-colors">
-                  <Download size={20} />
-                  <span>Download</span>
                 </button>
                 
                 <button className="p-2 bg-dark-secondary hover:bg-dark-hover rounded-full transition-colors">
