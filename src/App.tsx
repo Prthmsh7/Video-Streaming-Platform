@@ -70,21 +70,16 @@ function App() {
 
   return (
     <div className="min-h-screen bg-dark-bg text-text-primary">
-      {/* Simple Header with Just Sillycon Branding */}
+      {/* Header */}
       <header className="glass border-b border-dark-border sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-center">
-            <div className="flex items-center space-x-4">
-              <div className="w-12 h-12 gradient-primary rounded-2xl flex items-center justify-center shadow-glow">
-                <span className="text-white font-bold text-xl">S</span>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-                  Sillycon
-                </h1>
-                <p className="text-sm text-text-muted font-medium text-center">Next-Gen Platform</p>
-              </div>
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold text-lg">S</span>
             </div>
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+              Sillycon
+            </h1>
           </div>
         </div>
       </header>
