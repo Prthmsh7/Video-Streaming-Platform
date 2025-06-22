@@ -59,7 +59,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen }) => {
       active ? 'bg-dark-hover' : ''
     }`}>
       <Icon size={20} />
-      {isOpen && <span className="text-sm">{span}</span>}
+      {isOpen && <span className="text-sm">{label}</span>}
     </button>
   );
 
