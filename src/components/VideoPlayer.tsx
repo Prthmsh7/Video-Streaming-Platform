@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   ThumbsUp, 
   ThumbsDown, 
@@ -10,7 +10,14 @@ import {
   ChevronUp,
   Upload,
   Play,
-  X
+  Pause,
+  X,
+  Volume2,
+  VolumeX,
+  Maximize,
+  Settings,
+  SkipForward,
+  SkipBack
 } from 'lucide-react';
 import { Video } from '../types/Video';
 
@@ -35,53 +42,180 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [videoEnded, setVideoEnded] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [quality, setQuality] = useState('auto');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const playerRef = useRef<HTMLDivElement>(null);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Auto-play next video after 5 seconds (simulating video end)
+  // Auto-hide controls
   useEffect(() => {
-    if (isPlaying) {
-      const timer = setTimeout(() => {
-        setVideoEnded(true);
-        setIsPlaying(false);
-        
-        // Auto-play next video after 3 seconds
+    const resetControlsTimeout = () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+      setShowControls(true);
+      controlsTimeoutRef.current = setTimeout(() => {
+        if (isPlaying) {
+          setShowControls(false);
+        }
+      }, 3000);
+    };
+
+    resetControlsTimeout();
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, [isPlaying]);
+
+  // Auto-play next video when current ends
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleEnded = () => {
+      if (upNextVideos.length > 0) {
         setTimeout(() => {
-          if (upNextVideos.length > 0) {
-            onNextVideo();
-            setVideoEnded(false);
-          }
-        }, 3000);
-      }, 5000); // Simulate 5-second video duration
+          onNextVideo();
+        }, 2000);
+      }
+    };
 
-      return () => clearTimeout(timer);
+    video.addEventListener('ended', handleEnded);
+    return () => video.removeEventListener('ended', handleEnded);
+  }, [upNextVideos.length, onNextVideo]);
+
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      video.pause();
+    } else {
+      video.play();
     }
-  }, [isPlaying, upNextVideos.length, onNextVideo]);
-
-  const handlePlayVideo = () => {
-    setIsPlaying(true);
-    setVideoEnded(false);
+    setIsPlaying(!isPlaying);
   };
 
-  const handleUploadSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
+  const handleTimeUpdate = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    setCurrentTime(video.currentTime);
+  };
+
+  const handleLoadedMetadata = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    setDuration(video.duration);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const time = parseFloat(e.target.value);
+    video.currentTime = time;
+    setCurrentTime(time);
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const vol = parseFloat(e.target.value);
+    video.volume = vol;
+    setVolume(vol);
+    setIsMuted(vol === 0);
+  };
+
+  const toggleMute = () => {
+    const video = videoRef.current;
+    if (!video) return;
     
+    if (isMuted) {
+      video.volume = volume;
+      setIsMuted(false);
+    } else {
+      video.volume = 0;
+      setIsMuted(true);
+    }
+  };
+
+  const changePlaybackRate = (rate: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.playbackRate = rate;
+    setPlaybackRate(rate);
+    setShowSettings(false);
+  };
+
+  const toggleFullscreen = () => {
+    if (!playerRef.current) return;
+
+    if (!isFullscreen) {
+      if (playerRef.current.requestFullscreen) {
+        playerRef.current.requestFullscreen();
+      }
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+    setIsFullscreen(!isFullscreen);
+  };
+
+  const skipTime = (seconds: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
+  };
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = Math.floor(time % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('video/')) {
+      alert('Please select a video file');
+      return;
+    }
+
+    const videoUrl = URL.createObjectURL(file);
     const newVideo: Video = {
       id: Date.now().toString(),
-      title: formData.get('title') as string || 'Untitled Video',
-      channel: formData.get('channel') as string || 'Your Channel',
+      title: file.name.replace(/\.[^/.]+$/, ''),
+      channel: 'Your Channel',
       views: '0 views',
       timestamp: 'Just now',
-      duration: '10:00',
-      thumbnail: formData.get('thumbnail') as string || 'https://images.pexels.com/photos/1181671/pexels-photo-1181671.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
+      duration: '0:00',
+      thumbnail: '',
       channelAvatar: 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-      description: formData.get('description') as string || 'No description provided.',
+      description: `Uploaded video: ${file.name}`,
       likes: '0',
-      subscribers: '1K'
+      subscribers: '1K',
+      videoUrl: videoUrl
     };
 
     onVideoUpload(newVideo);
     setShowUploadModal(false);
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   return (
@@ -90,36 +224,135 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {/* Main Video Section */}
         <div className="flex-1">
           {/* Video Player */}
-          <div className="relative bg-black rounded-lg overflow-hidden mb-4">
-            <img 
-              src={video.thumbnail} 
-              alt={video.title}
+          <div 
+            ref={playerRef}
+            className="relative bg-black rounded-lg overflow-hidden mb-4 group"
+            onMouseMove={() => setShowControls(true)}
+            onMouseLeave={() => isPlaying && setShowControls(false)}
+          >
+            <video
+              ref={videoRef}
+              src={video.videoUrl || video.thumbnail}
+              poster={video.thumbnail}
               className="w-full aspect-video object-cover"
+              onTimeUpdate={handleTimeUpdate}
+              onLoadedMetadata={handleLoadedMetadata}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
             />
-            <div className="absolute inset-0 flex items-center justify-center">
-              {!isPlaying && !videoEnded && (
-                <button 
-                  onClick={handlePlayVideo}
-                  className="w-16 h-16 bg-youtube-red rounded-full flex items-center justify-center cursor-pointer hover:bg-red-600 transition-colors"
-                >
-                  <Play size={24} className="text-white ml-1" />
-                </button>
-              )}
-              {isPlaying && (
-                <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-1 rounded">
-                  Playing...
+            
+            {/* Video Controls Overlay */}
+            <div className={`absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent transition-opacity duration-300 ${
+              showControls ? 'opacity-100' : 'opacity-0'
+            }`}>
+              {/* Center Play Button */}
+              {!isPlaying && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <button 
+                    onClick={togglePlay}
+                    className="w-16 h-16 bg-youtube-red rounded-full flex items-center justify-center cursor-pointer hover:bg-red-600 transition-colors"
+                  >
+                    <Play size={24} className="text-white ml-1" />
+                  </button>
                 </div>
               )}
-              {videoEnded && (
-                <div className="absolute inset-0 bg-black bg-opacity-70 flex items-center justify-center">
-                  <div className="text-center text-white">
-                    <p className="mb-4">Video ended</p>
-                    {upNextVideos.length > 0 && (
-                      <p className="text-sm">Next video starting in 3 seconds...</p>
-                    )}
+
+              {/* Bottom Controls */}
+              <div className="absolute bottom-0 left-0 right-0 p-4">
+                {/* Progress Bar */}
+                <div className="mb-4">
+                  <input
+                    type="range"
+                    min="0"
+                    max={duration || 0}
+                    value={currentTime}
+                    onChange={handleSeek}
+                    className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
+                  />
+                </div>
+
+                {/* Control Buttons */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-4">
+                    <button onClick={togglePlay} className="text-white hover:text-gray-300">
+                      {isPlaying ? <Pause size={24} /> : <Play size={24} />}
+                    </button>
+                    
+                    <button onClick={() => skipTime(-10)} className="text-white hover:text-gray-300">
+                      <SkipBack size={20} />
+                    </button>
+                    
+                    <button onClick={() => skipTime(10)} className="text-white hover:text-gray-300">
+                      <SkipForward size={20} />
+                    </button>
+
+                    <div className="flex items-center space-x-2">
+                      <button onClick={toggleMute} className="text-white hover:text-gray-300">
+                        {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                      </button>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={isMuted ? 0 : volume}
+                        onChange={handleVolumeChange}
+                        className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
+                      />
+                    </div>
+
+                    <div className="text-white text-sm">
+                      {formatTime(currentTime)} / {formatTime(duration)}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-4">
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowSettings(!showSettings)}
+                        className="text-white hover:text-gray-300"
+                      >
+                        <Settings size={20} />
+                      </button>
+                      
+                      {showSettings && (
+                        <div className="absolute bottom-8 right-0 bg-dark-secondary border border-dark-hover rounded-lg shadow-lg w-48 py-2">
+                          <div className="px-4 py-2 text-sm font-medium text-gray-400">Playback Speed</div>
+                          {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((rate) => (
+                            <button
+                              key={rate}
+                              onClick={() => changePlaybackRate(rate)}
+                              className={`w-full text-left px-4 py-2 hover:bg-dark-hover text-sm ${
+                                playbackRate === rate ? 'text-youtube-red' : 'text-white'
+                              }`}
+                            >
+                              {rate === 1 ? 'Normal' : `${rate}x`}
+                            </button>
+                          ))}
+                          
+                          <hr className="my-2 border-dark-hover" />
+                          <div className="px-4 py-2 text-sm font-medium text-gray-400">Quality</div>
+                          {['Auto', '1080p', '720p', '480p', '360p'].map((q) => (
+                            <button
+                              key={q}
+                              onClick={() => setQuality(q.toLowerCase())}
+                              className={`w-full text-left px-4 py-2 hover:bg-dark-hover text-sm ${
+                                quality === q.toLowerCase() ? 'text-youtube-red' : 'text-white'
+                              }`}
+                            >
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <button onClick={toggleFullscreen} className="text-white hover:text-gray-300">
+                      <Maximize size={20} />
+                    </button>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
@@ -247,7 +480,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="font-medium text-sm">@techexplorer</span>
                     <span className="text-gray-400 text-xs">2 hours ago</span>
                   </div>
-                  <p className="text-gray-300 mb-2">Great tutorial! Really helped me understand React better. The TypeScript integration examples were particularly useful.</p>
+                  <p className="text-gray-300 mb-2">Great video! The quality is amazing and the content is very informative.</p>
                   <div className="flex items-center space-x-4">
                     <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
                       <ThumbsUp size={14} />
@@ -274,7 +507,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="font-medium text-sm">@developer456</span>
                     <span className="text-gray-400 text-xs">5 hours ago</span>
                   </div>
-                  <p className="text-gray-300 mb-2">Could you make a video about advanced hooks next? Specifically useCallback and useMemo optimization techniques.</p>
+                  <p className="text-gray-300 mb-2">Thanks for sharing! Could you upload more videos like this?</p>
                   <div className="flex items-center space-x-4">
                     <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
                       <ThumbsUp size={14} />
@@ -298,13 +531,21 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-medium">Up next</h3>
             <button 
-              onClick={() => setShowUploadModal(true)}
+              onClick={handleUploadClick}
               className="flex items-center space-x-2 px-3 py-1.5 bg-dark-secondary hover:bg-dark-hover rounded-full transition-colors text-sm"
             >
               <Upload size={16} />
               <span>Upload</span>
             </button>
           </div>
+          
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/*"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
           
           <div className="space-y-3">
             {upNextVideos.map((upNextVideo, index) => (
@@ -345,83 +586,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-dark-secondary rounded-lg p-6 w-full max-w-md mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold">Upload Video</h2>
-              <button 
-                onClick={() => setShowUploadModal(false)}
-                className="p-1 hover:bg-dark-hover rounded-full transition-colors"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            
-            <form onSubmit={handleUploadSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Video Title</label>
-                <input 
-                  type="text" 
-                  name="title"
-                  placeholder="Enter video title"
-                  className="w-full bg-dark-bg border border-dark-hover rounded-lg px-3 py-2 outline-none focus:border-white transition-colors"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-2">Channel Name</label>
-                <input 
-                  type="text" 
-                  name="channel"
-                  placeholder="Enter channel name"
-                  className="w-full bg-dark-bg border border-dark-hover rounded-lg px-3 py-2 outline-none focus:border-white transition-colors"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-2">Thumbnail URL</label>
-                <input 
-                  type="url" 
-                  name="thumbnail"
-                  placeholder="Enter thumbnail URL (optional)"
-                  className="w-full bg-dark-bg border border-dark-hover rounded-lg px-3 py-2 outline-none focus:border-white transition-colors"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-2">Description</label>
-                <textarea 
-                  name="description"
-                  placeholder="Enter video description"
-                  rows={3}
-                  className="w-full bg-dark-bg border border-dark-hover rounded-lg px-3 py-2 outline-none focus:border-white transition-colors resize-none"
-                />
-              </div>
-              
-              <div className="flex space-x-3 pt-4">
-                <button 
-                  type="button"
-                  onClick={() => setShowUploadModal(false)}
-                  className="flex-1 px-4 py-2 bg-dark-hover hover:bg-gray-600 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  type="submit"
-                  className="flex-1 px-4 py-2 bg-youtube-red hover:bg-red-600 rounded-lg transition-colors"
-                >
-                  Upload
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

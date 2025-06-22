@@ -11,6 +11,7 @@ export interface Video {
   likes?: string;
   dislikes?: string;
   subscribers?: string;
+  videoUrl?: string; // For actual video files
 }
 
 export interface Channel {
