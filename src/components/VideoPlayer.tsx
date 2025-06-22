@@ -81,10 +81,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // Investment tiers
   const investmentTiers = [
-    { name: 'Supporter', min: 50, max: 499, benefits: ['Early access to content', 'Exclusive updates'], color: 'from-blue-500 to-purple-500', icon: Star },
-    { name: 'Backer', min: 500, max: 2499, benefits: ['All Supporter benefits', 'Monthly video calls', 'Behind-the-scenes content'], color: 'from-purple-500 to-pink-500', icon: Award },
-    { name: 'Partner', min: 2500, max: 9999, benefits: ['All Backer benefits', 'Co-producer credit', 'Input on future content'], color: 'from-pink-500 to-red-500', icon: Sparkles },
-    { name: 'Executive', min: 10000, max: Infinity, benefits: ['All Partner benefits', 'Revenue sharing', 'Direct collaboration opportunities'], color: 'from-yellow-500 to-orange-500', icon: Zap }
+    { name: 'Supporter', min: 50, max: 499, benefits: ['Early access to content', 'Exclusive updates'], color: 'text-blue-400', icon: Star },
+    { name: 'Backer', min: 500, max: 2499, benefits: ['All Supporter benefits', 'Monthly video calls', 'Behind-the-scenes content'], color: 'text-purple-400', icon: Award },
+    { name: 'Partner', min: 2500, max: 9999, benefits: ['All Backer benefits', 'Co-producer credit', 'Input on future content'], color: 'text-pink-400', icon: Sparkles },
+    { name: 'Executive', min: 10000, max: Infinity, benefits: ['All Partner benefits', 'Revenue sharing', 'Direct collaboration opportunities'], color: 'text-yellow-400', icon: Zap }
   ];
 
   // Auto-hide controls
@@ -316,7 +316,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             />
             
             {/* Video Controls Overlay */}
-            <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-all duration-500 ${
+            <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-all duration-300 ${
               showControls ? 'opacity-100' : 'opacity-0'
             }`}>
               {/* Center Play Button */}
@@ -324,7 +324,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <div className="absolute inset-0 flex items-center justify-center">
                   <button 
                     onClick={togglePlay}
-                    className="w-20 h-20 gradient-primary rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all duration-300 shadow-2xl pulse-glow ripple"
+                    className="w-20 h-20 bg-primary rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all duration-300 shadow-2xl pulse-glow ripple"
                   >
                     <Play size={32} className="text-white ml-1" />
                   </button>
@@ -348,20 +348,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Control Buttons */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-6">
-                    <button onClick={togglePlay} className="text-white hover:text-primary-light transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                    <button onClick={togglePlay} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
                       {isPlaying ? <Pause size={28} /> : <Play size={28} />}
                     </button>
                     
-                    <button onClick={() => skipTime(-10)} className="text-white hover:text-primary-light transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                    <button onClick={() => skipTime(-10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
                       <SkipBack size={24} />
                     </button>
                     
-                    <button onClick={() => skipTime(10)} className="text-white hover:text-primary-light transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                    <button onClick={() => skipTime(10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
                       <SkipForward size={24} />
                     </button>
 
                     <div className="flex items-center space-x-3">
-                      <button onClick={toggleMute} className="text-white hover:text-primary-light transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                      <button onClick={toggleMute} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
                         {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
                       </button>
                       <input
@@ -384,7 +384,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <div className="relative">
                       <button 
                         onClick={() => setShowSettings(!showSettings)}
-                        className="text-white hover:text-primary-light transition-all duration-300 p-2 rounded-lg hover:bg-white/10 scale-hover"
+                        className="text-white hover:text-primary transition-all duration-300 p-2 rounded-lg hover:bg-white/10 scale-hover"
                       >
                         <Settings size={24} />
                       </button>
@@ -421,7 +421,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       )}
                     </div>
 
-                    <button onClick={toggleFullscreen} className="text-white hover:text-primary-light transition-all duration-300 p-2 rounded-lg hover:bg-white/10 scale-hover">
+                    <button onClick={toggleFullscreen} className="text-white hover:text-primary transition-all duration-300 p-2 rounded-lg hover:bg-white/10 scale-hover">
                       <Maximize size={24} />
                     </button>
                   </div>
@@ -432,7 +432,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
           {/* Video Info */}
           <div className="mb-6 slide-in-left">
-            <h1 className="text-2xl font-bold mb-4 text-text-primary text-reveal">{video.title}</h1>
+            <h1 className="text-2xl font-bold mb-4 text-text-primary">{video.title}</h1>
             
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center space-x-4 text-text-secondary">
@@ -519,7 +519,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 btn-animate ripple ${
                     isSubscribed 
                       ? 'glass text-text-secondary hover:bg-primary/20' 
-                      : 'gradient-primary text-white hover:scale-105 shadow-lg'
+                      : 'bg-primary text-white hover:scale-105 shadow-lg'
                   }`}
                 >
                   <Zap size={18} />
@@ -567,7 +567,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <button className="px-4 py-2 text-text-secondary hover:text-text-primary transition-all duration-300 scale-hover">
                     Cancel
                   </button>
-                  <button className="px-6 py-2 gradient-primary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 ripple">
+                  <button className="px-6 py-2 bg-primary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 ripple">
                     Comment
                   </button>
                 </div>
@@ -641,7 +641,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <h3 className="font-bold text-lg text-text-primary">Up Next</h3>
               <button 
                 onClick={handleUploadClick}
-                className="flex items-center space-x-2 px-4 py-2 gradient-secondary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 text-sm ripple"
+                className="flex items-center space-x-2 px-4 py-2 bg-secondary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 text-sm ripple"
               >
                 <Upload size={16} />
                 <span>Upload</span>
@@ -710,7 +710,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             )}
             
             <div className="flex items-center space-x-3 mb-6">
-              <div className="w-10 h-10 gradient-secondary rounded-xl flex items-center justify-center pulse-glow">
+              <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center pulse-glow">
                 <DollarSign size={20} className="text-white" />
               </div>
               <h3 className="text-xl font-bold text-text-primary">Invest in Content</h3>
@@ -770,7 +770,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       key={tier.name}
                       className={`border rounded-xl p-4 cursor-pointer transition-all duration-300 stagger-item card-hover ${
                         selectedInvestmentTier === tier.name 
-                          ? 'border-secondary bg-secondary/10 shadow-glow-teal' 
+                          ? 'border-secondary bg-secondary/10' 
                           : 'border-dark-border hover:border-primary/50 hover:bg-primary/5'
                       }`}
                       onClick={() => setSelectedInvestmentTier(tier.name)}
@@ -778,8 +778,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     >
                       <div className="flex justify-between items-center mb-2">
                         <div className="flex items-center space-x-2">
-                          <IconComponent size={16} className={`bg-gradient-to-r ${tier.color} bg-clip-text text-transparent`} />
-                          <span className={`font-semibold bg-gradient-to-r ${tier.color} bg-clip-text text-transparent`}>
+                          <IconComponent size={16} className={tier.color} />
+                          <span className={`font-semibold ${tier.color}`}>
                             {tier.name}
                           </span>
                         </div>
@@ -815,7 +815,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <button
                 onClick={handleInvestment}
                 disabled={!investmentAmount || parseFloat(investmentAmount) < 50}
-                className="w-full py-3 gradient-secondary hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 rounded-xl font-semibold text-white transition-all duration-300 btn-animate ripple"
+                className="w-full py-3 bg-secondary hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 rounded-xl font-semibold text-white transition-all duration-300 btn-animate ripple"
               >
                 Invest Now
               </button>
