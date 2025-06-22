@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import VideoPlayer from './components/VideoPlayer';
 import { Video } from './types/Video';
 
@@ -50,6 +50,12 @@ function App() {
   ]);
 
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Page load animation
+  useEffect(() => {
+    setIsLoaded(true);
+  }, []);
 
   const handleVideoUpload = (uploadedVideo: Video) => {
     setVideoQueue(prevQueue => [...prevQueue, uploadedVideo]);
@@ -69,15 +75,15 @@ function App() {
   const upNextVideos = videoQueue.slice(currentVideoIndex + 1);
 
   return (
-    <div className="min-h-screen bg-dark-bg text-text-primary">
+    <div className={`min-h-screen bg-dark-bg text-text-primary transition-all duration-1000 ${isLoaded ? 'fade-in' : 'opacity-0'}`}>
       {/* Header */}
-      <header className="glass border-b border-dark-border sticky top-0 z-50">
+      <header className="glass border-b border-dark-border sticky top-0 z-50 slide-in-left">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center pulse-glow morph-shape">
               <span className="text-white font-bold text-lg">S</span>
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+            <h1 className="text-2xl font-bold text-primary">
               Sillycon
             </h1>
           </div>
