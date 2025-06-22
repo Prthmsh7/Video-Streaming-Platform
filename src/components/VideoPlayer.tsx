@@ -17,7 +17,11 @@ import {
   Maximize,
   Settings,
   SkipForward,
-  SkipBack
+  SkipBack,
+  DollarSign,
+  TrendingUp,
+  Users,
+  Target
 } from 'lucide-react';
 import { Video } from '../types/Video';
 
@@ -52,10 +56,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [quality, setQuality] = useState('auto');
   const [isFullscreen, setIsFullscreen] = useState(false);
   
+  // Investment states
+  const [investmentAmount, setInvestmentAmount] = useState('');
+  const [selectedInvestmentTier, setSelectedInvestmentTier] = useState('');
+  const [totalInvestment, setTotalInvestment] = useState(125000);
+  const [investmentGoal, setInvestmentGoal] = useState(500000);
+  const [totalInvestors, setTotalInvestors] = useState(47);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Investment tiers
+  const investmentTiers = [
+    { name: 'Supporter', min: 50, max: 499, benefits: ['Early access to content', 'Exclusive updates'] },
+    { name: 'Backer', min: 500, max: 2499, benefits: ['All Supporter benefits', 'Monthly video calls', 'Behind-the-scenes content'] },
+    { name: 'Partner', min: 2500, max: 9999, benefits: ['All Backer benefits', 'Co-producer credit', 'Input on future content'] },
+    { name: 'Executive', min: 10000, max: Infinity, benefits: ['All Partner benefits', 'Revenue sharing', 'Direct collaboration opportunities'] }
+  ];
 
   // Auto-hide controls
   useEffect(() => {
@@ -175,14 +194,41 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const skipTime = (seconds: number) => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !isFinite(video.duration)) return;
     video.currentTime = Math.max(0, Math.min(video.duration, video.currentTime + seconds));
   };
 
   const formatTime = (time: number) => {
+    if (!isFinite(time)) return '0:00';
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const getInvestmentTier = (amount: number) => {
+    return investmentTiers.find(tier => amount >= tier.min && amount <= tier.max);
+  };
+
+  const handleInvestment = () => {
+    const amount = parseFloat(investmentAmount);
+    if (amount && amount >= 50) {
+      setTotalInvestment(prev => prev + amount);
+      setTotalInvestors(prev => prev + 1);
+      setInvestmentAmount('');
+      setSelectedInvestmentTier('');
+      alert(`Thank you for your investment of ${formatCurrency(amount)}!`);
+    } else {
+      alert('Minimum investment amount is $50');
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -217,6 +263,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
+
+  const progressPercentage = (totalInvestment / investmentGoal) * 100;
 
   return (
     <div className="py-6">
@@ -437,6 +485,117 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {showDescription ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
             </div>
+          </div>
+
+          {/* Investment Section */}
+          <div className="bg-dark-secondary rounded-lg p-6 mb-4">
+            <div className="flex items-center space-x-2 mb-4">
+              <DollarSign size={24} className="text-green-500" />
+              <h3 className="text-xl font-bold">Invest in this Content</h3>
+            </div>
+            
+            {/* Investment Progress */}
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm text-gray-400">Funding Progress</span>
+                <span className="text-sm font-medium">{Math.round(progressPercentage)}%</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
+                <div 
+                  className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+                ></div>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-green-500 font-medium">{formatCurrency(totalInvestment)} raised</span>
+                <span className="text-gray-400">Goal: {formatCurrency(investmentGoal)}</span>
+              </div>
+            </div>
+
+            {/* Investment Stats */}
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-1">
+                  <Users size={20} className="text-blue-500" />
+                </div>
+                <div className="text-lg font-bold">{totalInvestors}</div>
+                <div className="text-xs text-gray-400">Investors</div>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-1">
+                  <TrendingUp size={20} className="text-green-500" />
+                </div>
+                <div className="text-lg font-bold">{formatCurrency(totalInvestment / totalInvestors)}</div>
+                <div className="text-xs text-gray-400">Avg Investment</div>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-1">
+                  <Target size={20} className="text-purple-500" />
+                </div>
+                <div className="text-lg font-bold">{Math.max(0, Math.round((investmentGoal - totalInvestment) / 1000))}K</div>
+                <div className="text-xs text-gray-400">Remaining</div>
+              </div>
+            </div>
+
+            {/* Investment Tiers */}
+            <div className="mb-6">
+              <h4 className="font-medium mb-3">Investment Tiers</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {investmentTiers.map((tier) => (
+                  <div 
+                    key={tier.name}
+                    className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                      selectedInvestmentTier === tier.name 
+                        ? 'border-green-500 bg-green-500/10' 
+                        : 'border-gray-600 hover:border-gray-500'
+                    }`}
+                    onClick={() => setSelectedInvestmentTier(tier.name)}
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-medium">{tier.name}</span>
+                      <span className="text-sm text-gray-400">
+                        {formatCurrency(tier.min)}{tier.max !== Infinity ? ` - ${formatCurrency(tier.max)}` : '+'}
+                      </span>
+                    </div>
+                    <ul className="text-xs text-gray-400 space-y-1">
+                      {tier.benefits.map((benefit, index) => (
+                        <li key={index}>• {benefit}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Investment Input */}
+            <div className="flex space-x-3">
+              <div className="flex-1">
+                <input
+                  type="number"
+                  placeholder="Enter amount ($50 minimum)"
+                  value={investmentAmount}
+                  onChange={(e) => setInvestmentAmount(e.target.value)}
+                  className="w-full px-4 py-2 bg-dark-bg border border-gray-600 rounded-lg focus:border-green-500 focus:outline-none"
+                  min="50"
+                />
+                {investmentAmount && getInvestmentTier(parseFloat(investmentAmount)) && (
+                  <div className="text-xs text-green-500 mt-1">
+                    {getInvestmentTier(parseFloat(investmentAmount))?.name} Tier
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={handleInvestment}
+                disabled={!investmentAmount || parseFloat(investmentAmount) < 50}
+                className="px-6 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+              >
+                Invest
+              </button>
+            </div>
+            
+            <p className="text-xs text-gray-400 mt-3">
+              * Investments are subject to terms and conditions. Past performance does not guarantee future results.
+            </p>
           </div>
 
           {/* Comments Section */}
