@@ -442,155 +442,48 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           </div>
 
-          {/* Channel Info and Investment Section - Two Column Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-4">
-            {/* Channel Info & Description */}
-            <div className="bg-dark-secondary rounded-lg p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center space-x-3">
-                  <img 
-                    src={video.channelAvatar} 
-                    alt={video.channel}
-                    className="w-12 h-12 rounded-full"
-                  />
-                  <div>
-                    <h3 className="font-medium">{video.channel}</h3>
-                    <p className="text-gray-400 text-sm">{video.subscribers} subscribers</p>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-3">
-                  <button 
-                    onClick={() => setIsSubscribed(!isSubscribed)}
-                    className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-colors ${
-                      isSubscribed 
-                        ? 'bg-dark-hover text-gray-300' 
-                        : 'bg-youtube-red hover:bg-red-600 text-white'
-                    }`}
-                  >
-                    <Bell size={16} />
-                    <span>{isSubscribed ? 'Subscribed' : 'Subscribe'}</span>
-                  </button>
+          {/* Channel Info */}
+          <div className="bg-dark-secondary rounded-lg p-4 mb-4">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center space-x-3">
+                <img 
+                  src={video.channelAvatar} 
+                  alt={video.channel}
+                  className="w-12 h-12 rounded-full"
+                />
+                <div>
+                  <h3 className="font-medium">{video.channel}</h3>
+                  <p className="text-gray-400 text-sm">{video.subscribers} subscribers</p>
                 </div>
               </div>
               
-              {/* Description */}
-              <div className="text-gray-300">
-                <p className={`${showDescription ? '' : 'line-clamp-2'}`}>
-                  {video.description}
-                </p>
+              <div className="flex items-center space-x-3">
                 <button 
-                  onClick={() => setShowDescription(!showDescription)}
-                  className="flex items-center space-x-1 text-gray-400 hover:text-white mt-2 transition-colors"
+                  onClick={() => setIsSubscribed(!isSubscribed)}
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-colors ${
+                    isSubscribed 
+                      ? 'bg-dark-hover text-gray-300' 
+                      : 'bg-youtube-red hover:bg-red-600 text-white'
+                  }`}
                 >
-                  <span>{showDescription ? 'Show less' : 'Show more'}</span>
-                  {showDescription ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  <Bell size={16} />
+                  <span>{isSubscribed ? 'Subscribed' : 'Subscribe'}</span>
                 </button>
               </div>
             </div>
-
-            {/* Investment Section */}
-            <div className="bg-dark-secondary rounded-lg p-4">
-              <div className="flex items-center space-x-2 mb-4">
-                <DollarSign size={20} className="text-green-500" />
-                <h3 className="text-lg font-bold">Invest in this Content</h3>
-              </div>
-              
-              {/* Investment Progress */}
-              <div className="mb-4">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs text-gray-400">Funding Progress</span>
-                  <span className="text-xs font-medium">{Math.round(progressPercentage)}%</span>
-                </div>
-                <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
-                  <div 
-                    className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.min(progressPercentage, 100)}%` }}
-                  ></div>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-green-500 font-medium">{formatCurrency(totalInvestment)}</span>
-                  <span className="text-gray-400">Goal: {formatCurrency(investmentGoal)}</span>
-                </div>
-              </div>
-
-              {/* Investment Stats */}
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-1">
-                    <Users size={16} className="text-blue-500" />
-                  </div>
-                  <div className="text-sm font-bold">{totalInvestors}</div>
-                  <div className="text-xs text-gray-400">Investors</div>
-                </div>
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-1">
-                    <TrendingUp size={16} className="text-green-500" />
-                  </div>
-                  <div className="text-sm font-bold">{formatCurrency(totalInvestment / totalInvestors)}</div>
-                  <div className="text-xs text-gray-400">Avg</div>
-                </div>
-                <div className="text-center">
-                  <div className="flex items-center justify-center mb-1">
-                    <Target size={16} className="text-purple-500" />
-                  </div>
-                  <div className="text-sm font-bold">{Math.max(0, Math.round((investmentGoal - totalInvestment) / 1000))}K</div>
-                  <div className="text-xs text-gray-400">Left</div>
-                </div>
-              </div>
-
-              {/* Investment Tiers - Compact */}
-              <div className="mb-4">
-                <h4 className="text-sm font-medium mb-2">Investment Tiers</h4>
-                <div className="space-y-2">
-                  {investmentTiers.map((tier) => (
-                    <div 
-                      key={tier.name}
-                      className={`border rounded p-2 cursor-pointer transition-colors text-xs ${
-                        selectedInvestmentTier === tier.name 
-                          ? 'border-green-500 bg-green-500/10' 
-                          : 'border-gray-600 hover:border-gray-500'
-                      }`}
-                      onClick={() => setSelectedInvestmentTier(tier.name)}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">{tier.name}</span>
-                        <span className="text-gray-400">
-                          {formatCurrency(tier.min)}{tier.max !== Infinity ? ` - ${formatCurrency(tier.max)}` : '+'}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Investment Input */}
-              <div className="space-y-2">
-                <input
-                  type="number"
-                  placeholder="Enter amount ($50 min)"
-                  value={investmentAmount}
-                  onChange={(e) => setInvestmentAmount(e.target.value)}
-                  className="w-full px-3 py-2 bg-dark-bg border border-gray-600 rounded focus:border-green-500 focus:outline-none text-sm"
-                  min="50"
-                />
-                {investmentAmount && getInvestmentTier(parseFloat(investmentAmount)) && (
-                  <div className="text-xs text-green-500">
-                    {getInvestmentTier(parseFloat(investmentAmount))?.name} Tier
-                  </div>
-                )}
-                <button
-                  onClick={handleInvestment}
-                  disabled={!investmentAmount || parseFloat(investmentAmount) < 50}
-                  className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded font-medium transition-colors text-sm"
-                >
-                  Invest Now
-                </button>
-              </div>
-              
-              <p className="text-xs text-gray-400 mt-2">
-                * Subject to terms and conditions
+            
+            {/* Description */}
+            <div className="text-gray-300">
+              <p className={`${showDescription ? '' : 'line-clamp-2'}`}>
+                {video.description}
               </p>
+              <button 
+                onClick={() => setShowDescription(!showDescription)}
+                className="flex items-center space-x-1 text-gray-400 hover:text-white mt-2 transition-colors"
+              >
+                <span>{showDescription ? 'Show less' : 'Show more'}</span>
+                {showDescription ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
             </div>
           </div>
 
@@ -681,63 +574,173 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
 
-        {/* Up Next Sidebar */}
+        {/* Right Sidebar */}
         <div className="lg:w-96">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-medium">Up next</h3>
-            <button 
-              onClick={handleUploadClick}
-              className="flex items-center space-x-2 px-3 py-1.5 bg-dark-secondary hover:bg-dark-hover rounded-full transition-colors text-sm"
-            >
-              <Upload size={16} />
-              <span>Upload</span>
-            </button>
-          </div>
-          
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/*"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-          
-          <div className="space-y-3">
-            {upNextVideos.map((upNextVideo, index) => (
-              <div 
-                key={upNextVideo.id} 
-                className="flex space-x-3 cursor-pointer hover:bg-dark-secondary p-2 rounded-lg transition-colors"
-                onClick={() => onVideoSelect(currentVideoIndex + index + 1)}
+          {/* Up Next Section */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-medium">Up next</h3>
+              <button 
+                onClick={handleUploadClick}
+                className="flex items-center space-x-2 px-3 py-1.5 bg-dark-secondary hover:bg-dark-hover rounded-full transition-colors text-sm"
               >
-                <div className="relative flex-shrink-0">
-                  <img 
-                    src={upNextVideo.thumbnail} 
-                    alt={upNextVideo.title}
-                    className="w-40 aspect-video object-cover rounded"
-                  />
-                  <div className="absolute bottom-1 right-1 bg-black bg-opacity-80 text-white text-xs px-1 py-0.5 rounded">
-                    {upNextVideo.duration}
-                  </div>
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-sm line-clamp-2 mb-1">{upNextVideo.title}</h4>
-                  <p className="text-gray-400 text-xs mb-1">{upNextVideo.channel}</p>
-                  <div className="flex items-center space-x-1 text-gray-400 text-xs">
-                    <span>{upNextVideo.views}</span>
-                    <span>•</span>
-                    <span>{upNextVideo.timestamp}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
+                <Upload size={16} />
+                <span>Upload</span>
+              </button>
+            </div>
             
-            {upNextVideos.length === 0 && (
-              <div className="text-center text-gray-400 py-8">
-                <p>No more videos in queue</p>
-                <p className="text-sm mt-2">Upload a video to add it to the queue</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            
+            <div className="space-y-3">
+              {upNextVideos.map((upNextVideo, index) => (
+                <div 
+                  key={upNextVideo.id} 
+                  className="flex space-x-3 cursor-pointer hover:bg-dark-secondary p-2 rounded-lg transition-colors"
+                  onClick={() => onVideoSelect(currentVideoIndex + index + 1)}
+                >
+                  <div className="relative flex-shrink-0">
+                    <img 
+                      src={upNextVideo.thumbnail} 
+                      alt={upNextVideo.title}
+                      className="w-40 aspect-video object-cover rounded"
+                    />
+                    <div className="absolute bottom-1 right-1 bg-black bg-opacity-80 text-white text-xs px-1 py-0.5 rounded">
+                      {upNextVideo.duration}
+                    </div>
+                  </div>
+                  
+                  <div className="flex-1 min-w-0">
+                    <h4 className="font-medium text-sm line-clamp-2 mb-1">{upNextVideo.title}</h4>
+                    <p className="text-gray-400 text-xs mb-1">{upNextVideo.channel}</p>
+                    <div className="flex items-center space-x-1 text-gray-400 text-xs">
+                      <span>{upNextVideo.views}</span>
+                      <span>•</span>
+                      <span>{upNextVideo.timestamp}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {upNextVideos.length === 0 && (
+                <div className="text-center text-gray-400 py-8">
+                  <p>No more videos in queue</p>
+                  <p className="text-sm mt-2">Upload a video to add it to the queue</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Investment Section */}
+          <div className="bg-dark-secondary rounded-lg p-4">
+            <div className="flex items-center space-x-2 mb-4">
+              <DollarSign size={20} className="text-green-500" />
+              <h3 className="text-lg font-bold">Invest in this Content</h3>
+            </div>
+            
+            {/* Investment Progress */}
+            <div className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm text-gray-400">Funding Progress</span>
+                <span className="text-sm font-medium">{Math.round(progressPercentage)}%</span>
               </div>
-            )}
+              <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
+                <div 
+                  className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+                ></div>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-green-500 font-medium">{formatCurrency(totalInvestment)}</span>
+                <span className="text-gray-400">Goal: {formatCurrency(investmentGoal)}</span>
+              </div>
+            </div>
+
+            {/* Investment Stats */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-1">
+                  <Users size={18} className="text-blue-500" />
+                </div>
+                <div className="text-lg font-bold">{totalInvestors}</div>
+                <div className="text-xs text-gray-400">Investors</div>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-1">
+                  <TrendingUp size={18} className="text-green-500" />
+                </div>
+                <div className="text-lg font-bold">{formatCurrency(totalInvestment / totalInvestors)}</div>
+                <div className="text-xs text-gray-400">Average</div>
+              </div>
+              <div className="text-center">
+                <div className="flex items-center justify-center mb-1">
+                  <Target size={18} className="text-purple-500" />
+                </div>
+                <div className="text-lg font-bold">{Math.max(0, Math.round((investmentGoal - totalInvestment) / 1000))}K</div>
+                <div className="text-xs text-gray-400">Remaining</div>
+              </div>
+            </div>
+
+            {/* Investment Tiers */}
+            <div className="mb-4">
+              <h4 className="text-sm font-medium mb-3">Investment Tiers</h4>
+              <div className="space-y-2">
+                {investmentTiers.map((tier) => (
+                  <div 
+                    key={tier.name}
+                    className={`border rounded-lg p-3 cursor-pointer transition-colors ${
+                      selectedInvestmentTier === tier.name 
+                        ? 'border-green-500 bg-green-500/10' 
+                        : 'border-gray-600 hover:border-gray-500'
+                    }`}
+                    onClick={() => setSelectedInvestmentTier(tier.name)}
+                  >
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-medium">{tier.name}</span>
+                      <span className="text-gray-400 text-sm">
+                        {formatCurrency(tier.min)}{tier.max !== Infinity ? ` - ${formatCurrency(tier.max)}` : '+'}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {tier.benefits.slice(0, 2).join(' • ')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Investment Input */}
+            <div className="space-y-3">
+              <input
+                type="number"
+                placeholder="Enter amount ($50 minimum)"
+                value={investmentAmount}
+                onChange={(e) => setInvestmentAmount(e.target.value)}
+                className="w-full px-3 py-2 bg-dark-bg border border-gray-600 rounded-lg focus:border-green-500 focus:outline-none"
+                min="50"
+              />
+              {investmentAmount && getInvestmentTier(parseFloat(investmentAmount)) && (
+                <div className="text-sm text-green-500 font-medium">
+                  {getInvestmentTier(parseFloat(investmentAmount))?.name} Tier Selected
+                </div>
+              )}
+              <button
+                onClick={handleInvestment}
+                disabled={!investmentAmount || parseFloat(investmentAmount) < 50}
+                className="w-full py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg font-medium transition-colors"
+              >
+                Invest Now
+              </button>
+            </div>
+            
+            <p className="text-xs text-gray-400 mt-3 text-center">
+              * Subject to terms and conditions
+            </p>
           </div>
         </div>
       </div>
