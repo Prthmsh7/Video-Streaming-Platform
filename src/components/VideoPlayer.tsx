@@ -7,7 +7,8 @@ import {
   MoreHorizontal,
   Bell,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Upload
 } from 'lucide-react';
 import { Video } from '../types/Video';
 
@@ -304,7 +305,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video }) => {
 
         {/* Related Videos Sidebar */}
         <div className="lg:w-96">
-          <h3 className="font-medium mb-4">Up next</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-medium">Up next</h3>
+            <button className="flex items-center space-x-2 px-3 py-1.5 bg-dark-secondary hover:bg-dark-hover rounded-full transition-colors text-sm">
+              <Upload size={16} />
+              <span>Upload</span>
+            </button>
+          </div>
           <div className="space-y-3">
             {relatedVideos.map((relatedVideo) => (
               <div key={relatedVideo.id} className="flex space-x-3 cursor-pointer hover:bg-dark-secondary p-2 rounded-lg transition-colors">
