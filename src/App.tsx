@@ -1,45 +1,26 @@
-import React, { useState } from 'react';
-import Header from './components/Header';
-import Sidebar from './components/Sidebar';
-import VideoGrid from './components/VideoGrid';
+import React from 'react';
 import VideoPlayer from './components/VideoPlayer';
 import { Video } from './types/Video';
 
 function App() {
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-
-  const handleVideoSelect = (video: Video) => {
-    setSelectedVideo(video);
-  };
-
-  const handleBackToHome = () => {
-    setSelectedVideo(null);
+  // Sample video data
+  const sampleVideo: Video = {
+    id: '1',
+    title: 'Building a Modern React Application with TypeScript',
+    channel: 'Tech Tutorials',
+    views: '1.2M views',
+    timestamp: '2 days ago',
+    duration: '15:42',
+    thumbnail: 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
+    channelAvatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
+    description: 'Learn how to build a modern React application using TypeScript, including best practices and advanced patterns. In this comprehensive tutorial, we\'ll cover component architecture, state management, type safety, and performance optimization techniques that will help you build scalable and maintainable applications.',
+    likes: '45K',
+    subscribers: '892K'
   };
 
   return (
     <div className="min-h-screen bg-dark-bg text-white">
-      <Header 
-        onMenuClick={() => setSidebarOpen(!sidebarOpen)}
-        onLogoClick={handleBackToHome}
-      />
-      
-      <div className="flex">
-        <Sidebar isOpen={sidebarOpen} />
-        
-        <main className={`flex-1 transition-all duration-300 ${
-          sidebarOpen ? 'ml-60' : 'ml-16'
-        }`}>
-          {selectedVideo ? (
-            <VideoPlayer 
-              video={selectedVideo} 
-              onBackToHome={handleBackToHome}
-            />
-          ) : (
-            <VideoGrid onVideoSelect={handleVideoSelect} />
-          )}
-        </main>
-      </div>
+      <VideoPlayer video={sampleVideo} />
     </div>
   );
 }

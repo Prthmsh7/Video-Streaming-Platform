@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  ArrowLeft, 
   ThumbsUp, 
   ThumbsDown, 
   Share, 
@@ -14,10 +13,9 @@ import { Video } from '../types/Video';
 
 interface VideoPlayerProps {
   video: Video;
-  onBackToHome: () => void;
 }
 
-const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onBackToHome }) => {
+const VideoPlayer: React.FC<VideoPlayerProps> = ({ video }) => {
   const [showDescription, setShowDescription] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
 
@@ -55,19 +53,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onBackToHome }) => {
   ];
 
   return (
-    <div className="pt-6">
-      <div className="flex flex-col lg:flex-row gap-6 px-6">
+    <div className="py-6">
+      <div className="flex flex-col lg:flex-row gap-6 px-6 max-w-7xl mx-auto">
         {/* Main Video Section */}
         <div className="flex-1">
-          {/* Back Button */}
-          <button 
-            onClick={onBackToHome}
-            className="flex items-center space-x-2 mb-4 text-gray-400 hover:text-white transition-colors"
-          >
-            <ArrowLeft size={20} />
-            <span>Back to Home</span>
-          </button>
-
           {/* Video Player */}
           <div className="relative bg-black rounded-lg overflow-hidden mb-4">
             <img 
@@ -167,20 +156,58 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onBackToHome }) => {
 
           {/* Comments Section */}
           <div className="bg-dark-secondary rounded-lg p-4">
-            <h3 className="font-medium mb-4">Comments</h3>
-            <div className="space-y-4">
+            <h3 className="font-medium mb-4 text-lg">1,234 Comments</h3>
+            
+            {/* Add Comment */}
+            <div className="flex space-x-3 mb-6">
+              <img 
+                src="https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=32&h=32&dpr=2" 
+                alt="Your avatar"
+                className="w-10 h-10 rounded-full"
+              />
+              <div className="flex-1">
+                <input 
+                  type="text" 
+                  placeholder="Add a comment..."
+                  className="w-full bg-transparent border-b border-gray-600 pb-2 outline-none focus:border-white transition-colors"
+                />
+                <div className="flex justify-end space-x-2 mt-3">
+                  <button className="px-4 py-2 text-gray-400 hover:text-white transition-colors">
+                    Cancel
+                  </button>
+                  <button className="px-4 py-2 bg-youtube-red hover:bg-red-600 rounded-full text-white transition-colors">
+                    Comment
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Comments List */}
+            <div className="space-y-6">
               <div className="flex space-x-3">
                 <img 
                   src="https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=32&h=32&dpr=2" 
                   alt="User"
-                  className="w-8 h-8 rounded-full"
+                  className="w-10 h-10 rounded-full"
                 />
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-1">
-                    <span className="font-medium text-sm">@user123</span>
+                    <span className="font-medium text-sm">@techexplorer</span>
                     <span className="text-gray-400 text-xs">2 hours ago</span>
                   </div>
-                  <p className="text-gray-300 text-sm">Great tutorial! Really helped me understand React better.</p>
+                  <p className="text-gray-300 mb-2">Great tutorial! Really helped me understand React better. The TypeScript integration examples were particularly useful.</p>
+                  <div className="flex items-center space-x-4">
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
+                      <ThumbsUp size={14} />
+                      <span className="text-xs">24</span>
+                    </button>
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
+                      <ThumbsDown size={14} />
+                    </button>
+                    <button className="text-gray-400 hover:text-white text-xs transition-colors">
+                      Reply
+                    </button>
+                  </div>
                 </div>
               </div>
               
@@ -188,23 +215,96 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, onBackToHome }) => {
                 <img 
                   src="https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=32&h=32&dpr=2" 
                   alt="User"
-                  className="w-8 h-8 rounded-full"
+                  className="w-10 h-10 rounded-full"
                 />
                 <div className="flex-1">
                   <div className="flex items-center space-x-2 mb-1">
                     <span className="font-medium text-sm">@developer456</span>
                     <span className="text-gray-400 text-xs">5 hours ago</span>
                   </div>
-                  <p className="text-gray-300 text-sm">Could you make a video about advanced hooks next?</p>
+                  <p className="text-gray-300 mb-2">Could you make a video about advanced hooks next? Specifically useCallback and useMemo optimization techniques.</p>
+                  <div className="flex items-center space-x-4">
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
+                      <ThumbsUp size={14} />
+                      <span className="text-xs">12</span>
+                    </button>
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
+                      <ThumbsDown size={14} />
+                    </button>
+                    <button className="text-gray-400 hover:text-white text-xs transition-colors">
+                      Reply
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              <div className="flex space-x-3">
+                <img 
+                  src="https://images.pexels.com/photos/598745/pexels-photo-598745.jpeg?auto=compress&cs=tinysrgb&w=32&h=32&dpr=2" 
+                  alt="User"
+                  className="w-10 h-10 rounded-full"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="font-medium text-sm">@reactninja</span>
+                    <span className="text-gray-400 text-xs">1 day ago</span>
+                  </div>
+                  <p className="text-gray-300 mb-2">Amazing content as always! The way you explain complex concepts makes it so easy to understand. Keep up the great work! 🔥</p>
+                  <div className="flex items-center space-x-4">
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
+                      <ThumbsUp size={14} />
+                      <span className="text-xs">89</span>
+                    </button>
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
+                      <ThumbsDown size={14} />
+                    </button>
+                    <button className="text-gray-400 hover:text-white text-xs transition-colors">
+                      Reply
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex space-x-3">
+                <img 
+                  src="https://images.pexels.com/photos/733872/pexels-photo-733872.jpeg?auto=compress&cs=tinysrgb&w=32&h=32&dpr=2" 
+                  alt="User"
+                  className="w-10 h-10 rounded-full"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <span className="font-medium text-sm">@codingjourney</span>
+                    <span className="text-gray-400 text-xs">2 days ago</span>
+                  </div>
+                  <p className="text-gray-300 mb-2">This helped me fix a bug I've been struggling with for days. Thank you so much for the detailed explanation!</p>
+                  <div className="flex items-center space-x-4">
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
+                      <ThumbsUp size={14} />
+                      <span className="text-xs">45</span>
+                    </button>
+                    <button className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors">
+                      <ThumbsDown size={14} />
+                    </button>
+                    <button className="text-gray-400 hover:text-white text-xs transition-colors">
+                      Reply
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Load More Comments */}
+            <div className="mt-6 text-center">
+              <button className="text-youtube-red hover:text-red-400 transition-colors">
+                Show more comments
+              </button>
             </div>
           </div>
         </div>
 
         {/* Related Videos Sidebar */}
         <div className="lg:w-96">
-          <h3 className="font-medium mb-4">Related Videos</h3>
+          <h3 className="font-medium mb-4">Up next</h3>
           <div className="space-y-3">
             {relatedVideos.map((relatedVideo) => (
               <div key={relatedVideo.id} className="flex space-x-3 cursor-pointer hover:bg-dark-secondary p-2 rounded-lg transition-colors">
