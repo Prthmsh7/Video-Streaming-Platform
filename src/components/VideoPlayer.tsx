@@ -27,7 +27,13 @@ import {
   Zap,
   Star,
   Award,
-  Sparkles
+  Sparkles,
+  Image,
+  FileVideo,
+  Tag,
+  Globe,
+  Lock,
+  Eye
 } from 'lucide-react';
 import { Video } from '../types/Video';
 
@@ -74,8 +80,23 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [totalInvestors, setTotalInvestors] = useState(47);
   const [showInvestmentSuccess, setShowInvestmentSuccess] = useState(false);
   
+  // Upload form states
+  const [uploadForm, setUploadForm] = useState({
+    title: '',
+    description: '',
+    tags: '',
+    category: 'Education',
+    visibility: 'public',
+    thumbnail: null as File | null,
+    videoFile: null as File | null
+  });
+  const [uploadStep, setUploadStep] = useState(1); // 1: file selection, 2: details form
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -85,6 +106,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     { name: 'Backer', min: 500, max: 2499, benefits: ['All Supporter benefits', 'Monthly video calls', 'Behind-the-scenes content'], color: 'text-purple-400', icon: Award },
     { name: 'Partner', min: 2500, max: 9999, benefits: ['All Backer benefits', 'Co-producer credit', 'Input on future content'], color: 'text-pink-400', icon: Sparkles },
     { name: 'Executive', min: 10000, max: Infinity, benefits: ['All Partner benefits', 'Revenue sharing', 'Direct collaboration opportunities'], color: 'text-yellow-400', icon: Zap }
+  ];
+
+  const categories = [
+    'Education', 'Entertainment', 'Gaming', 'Music', 'News & Politics', 
+    'Science & Technology', 'Sports', 'Travel & Events', 'People & Blogs', 'Comedy'
   ];
 
   // Auto-hide controls
@@ -257,7 +283,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -266,28 +292,112 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       return;
     }
 
-    const videoUrl = URL.createObjectURL(file);
-    const newVideo: Video = {
-      id: Date.now().toString(),
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      channel: 'Your Channel',
-      views: '0 views',
-      timestamp: 'Just now',
-      duration: '0:00',
-      thumbnail: '',
-      channelAvatar: 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-      description: `Uploaded video: ${file.name}`,
-      likes: '0',
-      subscribers: '1K',
-      videoUrl: videoUrl
-    };
+    setUploadForm(prev => ({
+      ...prev,
+      videoFile: file,
+      title: file.name.replace(/\.[^/.]+$/, '') // Remove file extension
+    }));
+    setUploadStep(2);
+  };
 
-    onVideoUpload(newVideo);
-    setShowUploadModal(false);
+  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    setUploadForm(prev => ({ ...prev, thumbnail: file }));
+  };
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!uploadForm.videoFile || !uploadForm.title.trim()) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    // Simulate upload progress
+    const progressInterval = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev >= 90) {
+          clearInterval(progressInterval);
+          return prev;
+        }
+        return prev + Math.random() * 15;
+      });
+    }, 200);
+
+    // Simulate upload delay
+    setTimeout(() => {
+      clearInterval(progressInterval);
+      setUploadProgress(100);
+      
+      setTimeout(() => {
+        const videoUrl = URL.createObjectURL(uploadForm.videoFile!);
+        const thumbnailUrl = uploadForm.thumbnail 
+          ? URL.createObjectURL(uploadForm.thumbnail)
+          : 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2';
+
+        const newVideo: Video = {
+          id: Date.now().toString(),
+          title: uploadForm.title,
+          channel: 'Your Channel',
+          views: '0 views',
+          timestamp: 'Just now',
+          duration: '0:00',
+          thumbnail: thumbnailUrl,
+          channelAvatar: 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
+          description: uploadForm.description,
+          likes: '0',
+          subscribers: '1K',
+          videoUrl: videoUrl
+        };
+
+        onVideoUpload(newVideo);
+        
+        // Reset form
+        setUploadForm({
+          title: '',
+          description: '',
+          tags: '',
+          category: 'Education',
+          visibility: 'public',
+          thumbnail: null,
+          videoFile: null
+        });
+        setUploadStep(1);
+        setIsUploading(false);
+        setUploadProgress(0);
+        setShowUploadModal(false);
+      }, 1000);
+    }, 2000);
   };
 
   const handleUploadClick = () => {
-    fileInputRef.current?.click();
+    setShowUploadModal(true);
+  };
+
+  const closeUploadModal = () => {
+    setShowUploadModal(false);
+    setUploadStep(1);
+    setUploadForm({
+      title: '',
+      description: '',
+      tags: '',
+      category: 'Education',
+      visibility: 'public',
+      thumbnail: null,
+      videoFile: null
+    });
+    setIsUploading(false);
+    setUploadProgress(0);
   };
 
   const progressPercentage = (totalInvestment / investmentGoal) * 100;
@@ -648,14 +758,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </button>
             </div>
             
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/*"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            
             {/* Scrollable container for videos */}
             <div className={`space-y-4 ${upNextVideos.length > 3 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
               {upNextVideos.map((upNextVideo, index) => (
@@ -827,6 +929,229 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Upload Modal */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-primary/20 bounce-in">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b border-dark-border">
+              <h2 className="text-2xl font-bold text-text-primary flex items-center space-x-3">
+                <Upload size={24} className="text-primary" />
+                <span>Upload Video</span>
+              </h2>
+              <button 
+                onClick={closeUploadModal}
+                className="p-2 hover:bg-primary/20 rounded-xl transition-all duration-300 scale-hover"
+              >
+                <X size={24} className="text-text-secondary" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {uploadStep === 1 ? (
+                /* Step 1: File Selection */
+                <div className="text-center">
+                  <div className="border-2 border-dashed border-primary/30 rounded-2xl p-12 mb-6 hover:border-primary/50 transition-all duration-300">
+                    <FileVideo size={64} className="mx-auto mb-4 text-primary opacity-70" />
+                    <h3 className="text-xl font-semibold mb-2 text-text-primary">Select Video File</h3>
+                    <p className="text-text-secondary mb-6">Choose a video file to upload</p>
+                    
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="video/*"
+                      onChange={handleVideoFileSelect}
+                      className="hidden"
+                    />
+                    
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-8 py-3 bg-primary text-white rounded-xl font-semibold hover:scale-105 transition-all duration-300 ripple"
+                    >
+                      Choose File
+                    </button>
+                  </div>
+                  
+                  <p className="text-sm text-text-muted">
+                    Supported formats: MP4, AVI, MOV, WMV • Max size: 2GB
+                  </p>
+                </div>
+              ) : (
+                /* Step 2: Video Details Form */
+                <form onSubmit={handleFormSubmit} className="space-y-6">
+                  {/* Selected File Info */}
+                  <div className="glass rounded-xl p-4 border border-primary/10">
+                    <div className="flex items-center space-x-3">
+                      <FileVideo size={20} className="text-primary" />
+                      <span className="font-medium text-text-primary">{uploadForm.videoFile?.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setUploadStep(1)}
+                        className="text-text-muted hover:text-primary text-sm transition-all duration-300"
+                      >
+                        Change
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Title */}
+                  <div>
+                    <label className="block text-sm font-semibold text-text-primary mb-2">
+                      Title *
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadForm.title}
+                      onChange={(e) => setUploadForm(prev => ({ ...prev, title: e.target.value }))}
+                      className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary placeholder-text-muted transition-all duration-300"
+                      placeholder="Enter video title"
+                      required
+                    />
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-sm font-semibold text-text-primary mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      value={uploadForm.description}
+                      onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
+                      className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary placeholder-text-muted transition-all duration-300 resize-none"
+                      placeholder="Tell viewers about your video"
+                      rows={4}
+                    />
+                  </div>
+
+                  {/* Thumbnail */}
+                  <div>
+                    <label className="block text-sm font-semibold text-text-primary mb-2">
+                      Thumbnail
+                    </label>
+                    <div className="flex items-center space-x-4">
+                      <input
+                        ref={thumbnailInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleThumbnailSelect}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => thumbnailInputRef.current?.click()}
+                        className="flex items-center space-x-2 px-4 py-2 glass hover:bg-primary/20 rounded-xl transition-all duration-300 ripple"
+                      >
+                        <Image size={18} />
+                        <span>Choose Thumbnail</span>
+                      </button>
+                      {uploadForm.thumbnail && (
+                        <span className="text-sm text-text-secondary">{uploadForm.thumbnail.name}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Category and Tags Row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Category */}
+                    <div>
+                      <label className="block text-sm font-semibold text-text-primary mb-2">
+                        Category
+                      </label>
+                      <select
+                        value={uploadForm.category}
+                        onChange={(e) => setUploadForm(prev => ({ ...prev, category: e.target.value }))}
+                        className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary transition-all duration-300"
+                      >
+                        {categories.map(category => (
+                          <option key={category} value={category}>{category}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Visibility */}
+                    <div>
+                      <label className="block text-sm font-semibold text-text-primary mb-2">
+                        Visibility
+                      </label>
+                      <select
+                        value={uploadForm.visibility}
+                        onChange={(e) => setUploadForm(prev => ({ ...prev, visibility: e.target.value }))}
+                        className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary transition-all duration-300"
+                      >
+                        <option value="public">
+                          <Globe size={16} className="inline mr-2" />
+                          Public
+                        </option>
+                        <option value="unlisted">
+                          <Eye size={16} className="inline mr-2" />
+                          Unlisted
+                        </option>
+                        <option value="private">
+                          <Lock size={16} className="inline mr-2" />
+                          Private
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Tags */}
+                  <div>
+                    <label className="block text-sm font-semibold text-text-primary mb-2">
+                      Tags
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadForm.tags}
+                      onChange={(e) => setUploadForm(prev => ({ ...prev, tags: e.target.value }))}
+                      className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary placeholder-text-muted transition-all duration-300"
+                      placeholder="Add tags separated by commas"
+                    />
+                    <p className="text-xs text-text-muted mt-2">
+                      Tags help people find your video
+                    </p>
+                  </div>
+
+                  {/* Upload Progress */}
+                  {isUploading && (
+                    <div className="glass rounded-xl p-4 border border-primary/10">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-text-primary">Uploading...</span>
+                        <span className="text-sm font-bold text-primary">{Math.round(uploadProgress)}%</span>
+                      </div>
+                      <div className="w-full bg-dark-border rounded-full h-2 overflow-hidden">
+                        <div 
+                          className="progress-bar h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Form Actions */}
+                  <div className="flex justify-end space-x-4 pt-4 border-t border-dark-border">
+                    <button
+                      type="button"
+                      onClick={closeUploadModal}
+                      disabled={isUploading}
+                      className="px-6 py-3 text-text-secondary hover:text-text-primary transition-all duration-300 scale-hover disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isUploading || !uploadForm.title.trim()}
+                      className="px-8 py-3 bg-primary text-white rounded-xl font-semibold hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-300 ripple"
+                    >
+                      {isUploading ? 'Uploading...' : 'Upload Video'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
