@@ -27,20 +27,17 @@ import {
   Zap,
   Star,
   Award,
-  Sparkles,
-  Image,
-  FileVideo,
-  Tag,
-  Globe,
-  Lock,
-  Eye
+  Sparkles
 } from 'lucide-react';
 import { Video } from '../types/Video';
+import { useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
+import VideoUploadModal from './VideoUploadModal';
 
 interface VideoPlayerProps {
   video: Video;
   upNextVideos: Video[];
-  onVideoUpload: (video: Video) => void;
+  onVideoUpload: () => void;
   onNextVideo: () => void;
   onVideoSelect: (index: number) => void;
   currentVideoIndex: number;
@@ -71,34 +68,23 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isDisliked, setIsDisliked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [loadingComment, setLoadingComment] = useState(false);
   
   // Investment states
   const [investmentAmount, setInvestmentAmount] = useState('');
   const [selectedInvestmentTier, setSelectedInvestmentTier] = useState('');
-  const [totalInvestment, setTotalInvestment] = useState(125000);
+  const [totalInvestment, setTotalInvestment] = useState(0);
   const [investmentGoal, setInvestmentGoal] = useState(500000);
-  const [totalInvestors, setTotalInvestors] = useState(47);
+  const [totalInvestors, setTotalInvestors] = useState(0);
   const [showInvestmentSuccess, setShowInvestmentSuccess] = useState(false);
   
-  // Upload form states
-  const [uploadForm, setUploadForm] = useState({
-    title: '',
-    description: '',
-    tags: '',
-    category: 'Education',
-    visibility: 'public',
-    thumbnail: null as File | null,
-    videoFile: null as File | null
-  });
-  const [uploadStep, setUploadStep] = useState(1); // 1: file selection, 2: details form
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  
   const videoRef = useRef<HTMLVideoElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const thumbnailInputRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+
+  const { user } = useAuth();
 
   // Investment tiers
   const investmentTiers = [
@@ -108,10 +94,241 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     { name: 'Executive', min: 10000, max: Infinity, benefits: ['All Partner benefits', 'Revenue sharing', 'Direct collaboration opportunities'], color: 'text-yellow-400', icon: Zap }
   ];
 
-  const categories = [
-    'Education', 'Entertainment', 'Gaming', 'Music', 'News & Politics', 
-    'Science & Technology', 'Sports', 'Travel & Events', 'People & Blogs', 'Comedy'
-  ];
+  // Load video data and interactions
+  useEffect(() => {
+    if (video.id && user) {
+      loadVideoInteractions();
+      loadComments();
+      loadInvestmentData();
+      incrementViews();
+    }
+  }, [video.id, user]);
+
+  const loadVideoInteractions = async () => {
+    if (!user) return;
+
+    try {
+      // Check if user liked/disliked the video
+      const { data: likeData } = await supabase
+        .from('video_likes')
+        .select('is_like')
+        .eq('video_id', video.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (likeData) {
+        setIsLiked(likeData.is_like);
+        setIsDisliked(!likeData.is_like);
+      }
+
+      // Check subscription status
+      const { data: subData } = await supabase
+        .from('subscriptions')
+        .select('id')
+        .eq('subscriber_id', user.id)
+        .eq('channel_user_id', video.id) // This should be the video owner's ID
+        .single();
+
+      setIsSubscribed(!!subData);
+    } catch (error) {
+      console.error('Error loading video interactions:', error);
+    }
+  };
+
+  const loadComments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .select(`
+          *,
+          profiles:user_id (
+            username,
+            avatar_url
+          )
+        `)
+        .eq('video_id', video.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setComments(data || []);
+    } catch (error) {
+      console.error('Error loading comments:', error);
+    }
+  };
+
+  const loadInvestmentData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('investments')
+        .select('amount')
+        .eq('video_id', video.id);
+
+      if (error) throw error;
+
+      const total = data.reduce((sum, inv) => sum + Number(inv.amount), 0);
+      setTotalInvestment(total);
+      setTotalInvestors(data.length);
+    } catch (error) {
+      console.error('Error loading investment data:', error);
+    }
+  };
+
+  const incrementViews = async () => {
+    try {
+      await supabase.rpc('increment_video_views', { video_uuid: video.id });
+    } catch (error) {
+      console.error('Error incrementing views:', error);
+    }
+  };
+
+  const handleLike = async () => {
+    if (!user) return;
+
+    try {
+      const newLikeState = !isLiked;
+      
+      if (isLiked || isDisliked) {
+        // Update existing like/dislike
+        await supabase
+          .from('video_likes')
+          .update({ is_like: newLikeState })
+          .eq('video_id', video.id)
+          .eq('user_id', user.id);
+      } else {
+        // Insert new like
+        await supabase
+          .from('video_likes')
+          .insert({
+            video_id: video.id,
+            user_id: user.id,
+            is_like: newLikeState
+          });
+      }
+
+      setIsLiked(newLikeState);
+      setIsDisliked(false);
+    } catch (error) {
+      console.error('Error handling like:', error);
+    }
+  };
+
+  const handleDislike = async () => {
+    if (!user) return;
+
+    try {
+      const newDislikeState = !isDisliked;
+      
+      if (isLiked || isDisliked) {
+        // Update existing like/dislike
+        await supabase
+          .from('video_likes')
+          .update({ is_like: !newDislikeState })
+          .eq('video_id', video.id)
+          .eq('user_id', user.id);
+      } else {
+        // Insert new dislike
+        await supabase
+          .from('video_likes')
+          .insert({
+            video_id: video.id,
+            user_id: user.id,
+            is_like: false
+          });
+      }
+
+      setIsDisliked(newDislikeState);
+      setIsLiked(false);
+    } catch (error) {
+      console.error('Error handling dislike:', error);
+    }
+  };
+
+  const handleSubscribe = async () => {
+    if (!user) return;
+
+    try {
+      if (isSubscribed) {
+        // Unsubscribe
+        await supabase
+          .from('subscriptions')
+          .delete()
+          .eq('subscriber_id', user.id)
+          .eq('channel_user_id', video.id); // This should be the video owner's ID
+      } else {
+        // Subscribe
+        await supabase
+          .from('subscriptions')
+          .insert({
+            subscriber_id: user.id,
+            channel_user_id: video.id // This should be the video owner's ID
+          });
+      }
+
+      setIsSubscribed(!isSubscribed);
+    } catch (error) {
+      console.error('Error handling subscription:', error);
+    }
+  };
+
+  const handleAddComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newComment.trim()) return;
+
+    setLoadingComment(true);
+    try {
+      const { error } = await supabase
+        .from('comments')
+        .insert({
+          video_id: video.id,
+          user_id: user.id,
+          content: newComment.trim()
+        });
+
+      if (error) throw error;
+
+      setNewComment('');
+      loadComments(); // Reload comments
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    } finally {
+      setLoadingComment(false);
+    }
+  };
+
+  const handleInvestment = async () => {
+    if (!user) return;
+
+    const amount = parseFloat(investmentAmount);
+    if (amount && amount >= 50) {
+      try {
+        const tier = getInvestmentTier(amount);
+        if (!tier) return;
+
+        const { error } = await supabase
+          .from('investments')
+          .insert({
+            video_id: video.id,
+            user_id: user.id,
+            amount,
+            tier: tier.name
+          });
+
+        if (error) throw error;
+
+        setInvestmentAmount('');
+        setSelectedInvestmentTier('');
+        setShowInvestmentSuccess(true);
+        setTimeout(() => setShowInvestmentSuccess(false), 3000);
+        
+        // Reload investment data
+        loadInvestmentData();
+      } catch (error) {
+        console.error('Error making investment:', error);
+      }
+    } else {
+      alert('Minimum investment amount is $50');
+    }
+  };
 
   // Auto-hide controls
   useEffect(() => {
@@ -255,149 +472,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     return investmentTiers.find(tier => amount >= tier.min && amount <= tier.max);
   };
 
-  const handleLike = () => {
-    setIsLiked(!isLiked);
-    if (isDisliked) setIsDisliked(false);
-  };
-
-  const handleDislike = () => {
-    setIsDisliked(!isDisliked);
-    if (isLiked) setIsLiked(false);
-  };
-
   const handleSave = () => {
     setIsSaved(!isSaved);
-  };
-
-  const handleInvestment = () => {
-    const amount = parseFloat(investmentAmount);
-    if (amount && amount >= 50) {
-      setTotalInvestment(prev => prev + amount);
-      setTotalInvestors(prev => prev + 1);
-      setInvestmentAmount('');
-      setSelectedInvestmentTier('');
-      setShowInvestmentSuccess(true);
-      setTimeout(() => setShowInvestmentSuccess(false), 3000);
-    } else {
-      alert('Minimum investment amount is $50');
-    }
-  };
-
-  const handleVideoFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('video/')) {
-      alert('Please select a video file');
-      return;
-    }
-
-    setUploadForm(prev => ({
-      ...prev,
-      videoFile: file,
-      title: file.name.replace(/\.[^/.]+$/, '') // Remove file extension
-    }));
-    setUploadStep(2);
-  };
-
-  const handleThumbnailSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
-      return;
-    }
-
-    setUploadForm(prev => ({ ...prev, thumbnail: file }));
-  };
-
-  const handleFormSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!uploadForm.videoFile || !uploadForm.title.trim()) {
-      alert('Please fill in all required fields');
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadProgress(0);
-
-    // Simulate upload progress
-    const progressInterval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 90) {
-          clearInterval(progressInterval);
-          return prev;
-        }
-        return prev + Math.random() * 15;
-      });
-    }, 200);
-
-    // Simulate upload delay
-    setTimeout(() => {
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-      
-      setTimeout(() => {
-        const videoUrl = URL.createObjectURL(uploadForm.videoFile!);
-        const thumbnailUrl = uploadForm.thumbnail 
-          ? URL.createObjectURL(uploadForm.thumbnail)
-          : 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2';
-
-        const newVideo: Video = {
-          id: Date.now().toString(),
-          title: uploadForm.title,
-          channel: 'Your Channel',
-          views: '0 views',
-          timestamp: 'Just now',
-          duration: '0:00',
-          thumbnail: thumbnailUrl,
-          channelAvatar: 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-          description: uploadForm.description,
-          likes: '0',
-          subscribers: '1K',
-          videoUrl: videoUrl
-        };
-
-        onVideoUpload(newVideo);
-        
-        // Reset form
-        setUploadForm({
-          title: '',
-          description: '',
-          tags: '',
-          category: 'Education',
-          visibility: 'public',
-          thumbnail: null,
-          videoFile: null
-        });
-        setUploadStep(1);
-        setIsUploading(false);
-        setUploadProgress(0);
-        setShowUploadModal(false);
-      }, 1000);
-    }, 2000);
-  };
-
-  const handleUploadClick = () => {
-    setShowUploadModal(true);
-  };
-
-  const closeUploadModal = () => {
-    setShowUploadModal(false);
-    setUploadStep(1);
-    setUploadForm({
-      title: '',
-      description: '',
-      tags: '',
-      category: 'Education',
-      visibility: 'public',
-      thumbnail: null,
-      videoFile: null
-    });
-    setIsUploading(false);
-    setUploadProgress(0);
   };
 
   const progressPercentage = (totalInvestment / investmentGoal) * 100;
@@ -434,7 +510,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <div className="absolute inset-0 flex items-center justify-center">
                   <button 
                     onClick={togglePlay}
-                    className="w-20 h-20 bg-primary rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all duration-300 shadow-2xl pulse-glow ripple"
+                    className="w-20 h-20 bg-primary rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all duration-300 shadow-2xl pulse-glow"
                   >
                     <Play size={32} className="text-white ml-1" />
                   </button>
@@ -458,20 +534,20 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Control Buttons */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-6">
-                    <button onClick={togglePlay} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                    <button onClick={togglePlay} className="text-white hover:text-primary transition-all duration-300 scale-hover p-2 rounded-lg">
                       {isPlaying ? <Pause size={28} /> : <Play size={28} />}
                     </button>
                     
-                    <button onClick={() => skipTime(-10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                    <button onClick={() => skipTime(-10)} className="text-white hover:text-primary transition-all duration-300 scale-hover p-2 rounded-lg">
                       <SkipBack size={24} />
                     </button>
                     
-                    <button onClick={() => skipTime(10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                    <button onClick={() => skipTime(10)} className="text-white hover:text-primary transition-all duration-300 scale-hover p-2 rounded-lg">
                       <SkipForward size={24} />
                     </button>
 
                     <div className="flex items-center space-x-3">
-                      <button onClick={toggleMute} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                      <button onClick={toggleMute} className="text-white hover:text-primary transition-all duration-300 scale-hover p-2 rounded-lg">
                         {isMuted ? <VolumeX size={24} /> : <Volume2 size={24} />}
                       </button>
                       <input
@@ -506,7 +582,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <button
                               key={rate}
                               onClick={() => changePlaybackRate(rate)}
-                              className={`w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple ${
+                              className={`w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ${
                                 playbackRate === rate ? 'text-primary bg-primary/10' : 'text-text-primary'
                               }`}
                             >
@@ -520,7 +596,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             <button
                               key={q}
                               onClick={() => setQuality(q.toLowerCase())}
-                              className={`w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple ${
+                              className={`w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ${
                                 quality === q.toLowerCase() ? 'text-primary bg-primary/10' : 'text-text-primary'
                               }`}
                             >
@@ -552,7 +628,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <div className="flex items-center space-x-3">
                 <button 
                   onClick={handleLike}
-                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
+                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ${
                     isLiked ? 'text-primary bg-primary/10' : ''
                   }`}
                 >
@@ -562,7 +638,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 
                 <button 
                   onClick={handleDislike}
-                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
+                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ${
                     isDisliked ? 'text-red-400 bg-red-400/10' : ''
                   }`}
                 >
@@ -572,7 +648,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <div className="relative">
                   <button 
                     onClick={() => setShowShareMenu(!showShareMenu)}
-                    className="flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple"
+                    className="flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate"
                   >
                     <Share size={20} />
                     <span className="font-medium">Share</span>
@@ -580,17 +656,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   
                   {showShareMenu && (
                     <div className="absolute top-full mt-2 right-0 glass rounded-xl shadow-2xl w-48 py-3 border border-primary/20 bounce-in z-10">
-                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Copy Link</button>
-                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share on Twitter</button>
-                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share on Facebook</button>
-                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Embed Video</button>
+                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300">Copy Link</button>
+                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300">Share on Twitter</button>
+                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300">Share on Facebook</button>
+                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300">Embed Video</button>
                     </div>
                   )}
                 </div>
                 
                 <button 
                   onClick={handleSave}
-                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
+                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ${
                     isSaved ? 'text-secondary bg-secondary/10' : ''
                   }`}
                 >
@@ -598,7 +674,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <span className="font-medium">Save</span>
                 </button>
                 
-                <button className="p-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 scale-hover ripple">
+                <button className="p-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 scale-hover">
                   <MoreHorizontal size={20} />
                 </button>
               </div>
@@ -613,7 +689,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   <img 
                     src={video.channelAvatar} 
                     alt={video.channel}
-                    className="w-14 h-14 rounded-full ring-2 ring-primary/30 morph-shape"
+                    className="w-14 h-14 rounded-full ring-2 ring-primary/30"
                   />
                   <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-secondary rounded-full border-2 border-dark-surface pulse-glow"></div>
                 </div>
@@ -625,8 +701,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               
               <div className="flex items-center space-x-3">
                 <button 
-                  onClick={() => setIsSubscribed(!isSubscribed)}
-                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 btn-animate ripple ${
+                  onClick={handleSubscribe}
+                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 btn-animate ${
                     isSubscribed 
                       ? 'glass text-text-secondary hover:bg-primary/20' 
                       : 'bg-primary text-white hover:scale-105 shadow-lg'
@@ -657,88 +733,84 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <div className="glass rounded-2xl p-6 border border-primary/10 slide-in-left">
             <h3 className="font-bold mb-6 text-xl text-text-primary flex items-center space-x-2">
               <Send size={20} className="text-primary" />
-              <span>1,234 Comments</span>
+              <span>{comments.length} Comments</span>
             </h3>
             
             {/* Add Comment */}
-            <div className="flex space-x-4 mb-8">
-              <img 
-                src="https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
-                alt="Your avatar"
-                className="w-12 h-12 rounded-full ring-2 ring-primary/30 float-animation"
-              />
-              <div className="flex-1">
-                <input 
-                  type="text" 
-                  placeholder="Add a comment..."
-                  className="w-full bg-transparent border-b-2 border-dark-border pb-3 outline-none focus:border-primary transition-all duration-300 text-text-primary placeholder-text-muted"
+            {user && (
+              <form onSubmit={handleAddComment} className="flex space-x-4 mb-8">
+                <img 
+                  src={user.user_metadata?.avatar_url || 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2'} 
+                  alt="Your avatar"
+                  className="w-12 h-12 rounded-full ring-2 ring-primary/30 float-animation"
                 />
-                <div className="flex justify-end space-x-3 mt-4">
-                  <button className="px-4 py-2 text-text-secondary hover:text-text-primary transition-all duration-300 scale-hover">
-                    Cancel
-                  </button>
-                  <button className="px-6 py-2 bg-primary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 ripple">
-                    Comment
-                  </button>
+                <div className="flex-1">
+                  <input 
+                    type="text" 
+                    placeholder="Add a comment..."
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    className="w-full bg-transparent border-b-2 border-dark-border pb-3 outline-none focus:border-primary transition-all duration-300 text-text-primary placeholder-text-muted"
+                    required
+                  />
+                  <div className="flex justify-end space-x-3 mt-4">
+                    <button 
+                      type="button"
+                      onClick={() => setNewComment('')}
+                      className="px-4 py-2 text-text-secondary hover:text-text-primary transition-all duration-300 scale-hover"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      type="submit"
+                      disabled={loadingComment || !newComment.trim()}
+                      className="px-6 py-2 bg-primary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 disabled:opacity-50"
+                    >
+                      {loadingComment ? 'Posting...' : 'Comment'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </form>
+            )}
 
             {/* Comments List */}
             <div className="space-y-6">
-              <div className="flex space-x-4 stagger-item">
-                <img 
-                  src="https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
-                  alt="User"
-                  className="w-12 h-12 rounded-full ring-2 ring-secondary/30"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className="font-semibold text-text-primary">@techexplorer</span>
-                    <span className="text-text-muted text-sm">2 hours ago</span>
-                  </div>
-                  <p className="text-text-secondary mb-3 leading-relaxed">Great video! The quality is amazing and the content is very informative.</p>
-                  <div className="flex items-center space-x-6">
-                    <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
-                      <ThumbsUp size={16} />
-                      <span className="text-sm font-medium">24</span>
-                    </button>
-                    <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
-                      <ThumbsDown size={16} />
-                    </button>
-                    <button className="text-text-muted hover:text-primary text-sm font-medium transition-all duration-300 scale-hover">
-                      Reply
-                    </button>
+              {comments.map((comment, index) => (
+                <div key={comment.id} className="flex space-x-4 stagger-item" style={{ animationDelay: `${index * 0.1}s` }}>
+                  <img 
+                    src={comment.profiles?.avatar_url || 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2'} 
+                    alt="User"
+                    className="w-12 h-12 rounded-full ring-2 ring-secondary/30"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <span className="font-semibold text-text-primary">@{comment.profiles?.username || 'Anonymous'}</span>
+                      <span className="text-text-muted text-sm">{new Date(comment.created_at).toLocaleDateString()}</span>
+                    </div>
+                    <p className="text-text-secondary mb-3 leading-relaxed">{comment.content}</p>
+                    <div className="flex items-center space-x-6">
+                      <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
+                        <ThumbsUp size={16} />
+                        <span className="text-sm font-medium">{comment.likes}</span>
+                      </button>
+                      <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
+                        <ThumbsDown size={16} />
+                      </button>
+                      <button className="text-text-muted hover:text-primary text-sm font-medium transition-all duration-300 scale-hover">
+                        Reply
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ))}
               
-              <div className="flex space-x-4 stagger-item">
-                <img 
-                  src="https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
-                  alt="User"
-                  className="w-12 h-12 rounded-full ring-2 ring-accent/30"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className="font-semibold text-text-primary">@developer456</span>
-                    <span className="text-text-muted text-sm">5 hours ago</span>
-                  </div>
-                  <p className="text-text-secondary mb-3 leading-relaxed">Thanks for sharing! Could you upload more videos like this?</p>
-                  <div className="flex items-center space-x-6">
-                    <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
-                      <ThumbsUp size={16} />
-                      <span className="text-sm font-medium">12</span>
-                    </button>
-                    <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
-                      <ThumbsDown size={16} />
-                    </button>
-                    <button className="text-text-muted hover:text-primary text-sm font-medium transition-all duration-300 scale-hover">
-                      Reply
-                    </button>
-                  </div>
+              {comments.length === 0 && (
+                <div className="text-center text-text-muted py-8">
+                  <Send size={48} className="mx-auto mb-4 opacity-50" />
+                  <p className="font-medium">No comments yet</p>
+                  <p className="text-sm mt-2">Be the first to share your thoughts!</p>
                 </div>
-              </div>
+              )}
             </div>
           </div>
         </div>
@@ -749,13 +821,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <div className="glass rounded-2xl p-6 border border-primary/10">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-lg text-text-primary">Up Next</h3>
-              <button 
-                onClick={handleUploadClick}
-                className="flex items-center space-x-2 px-4 py-2 bg-secondary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 text-sm ripple"
-              >
-                <Upload size={16} />
-                <span>Upload</span>
-              </button>
+              {user && (
+                <button 
+                  onClick={() => setShowUploadModal(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-secondary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 text-sm"
+                >
+                  <Upload size={16} />
+                  <span>Upload</span>
+                </button>
+              )}
             </div>
             
             {/* Scrollable container for videos */}
@@ -849,14 +923,18 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <div className="flex items-center justify-center mb-2">
                   <TrendingUp size={20} className="text-green-400" />
                 </div>
-                <div className="text-lg font-bold text-text-primary">{formatCurrency(totalInvestment / totalInvestors)}</div>
+                <div className="text-lg font-bold text-text-primary">
+                  {totalInvestors > 0 ? formatCurrency(totalInvestment / totalInvestors) : '$0'}
+                </div>
                 <div className="text-xs text-text-muted">Average</div>
               </div>
               <div className="text-center p-3 glass rounded-xl card-hover">
                 <div className="flex items-center justify-center mb-2">
                   <Target size={20} className="text-purple-400" />
                 </div>
-                <div className="text-lg font-bold text-text-primary">{Math.max(0, Math.round((investmentGoal - totalInvestment) / 1000))}K</div>
+                <div className="text-lg font-bold text-text-primary">
+                  {Math.max(0, Math.round((investmentGoal - totalInvestment) / 1000))}K
+                </div>
                 <div className="text-xs text-text-muted">Remaining</div>
               </div>
             </div>
@@ -899,29 +977,37 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
 
             {/* Investment Input */}
-            <div className="space-y-4">
-              <input
-                type="number"
-                placeholder="Enter amount ($50 minimum)"
-                value={investmentAmount}
-                onChange={(e) => setInvestmentAmount(e.target.value)}
-                className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary/20 text-text-primary placeholder-text-muted font-mono transition-all duration-300"
-                min="50"
-              />
-              {investmentAmount && getInvestmentTier(parseFloat(investmentAmount)) && (
-                <div className="text-sm text-secondary font-semibold flex items-center space-x-2 bounce-in">
-                  <Zap size={16} />
-                  <span>{getInvestmentTier(parseFloat(investmentAmount))?.name} Tier Selected</span>
-                </div>
-              )}
-              <button
-                onClick={handleInvestment}
-                disabled={!investmentAmount || parseFloat(investmentAmount) < 50}
-                className="w-full py-3 bg-secondary hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 rounded-xl font-semibold text-white transition-all duration-300 btn-animate ripple"
-              >
-                Invest Now
-              </button>
-            </div>
+            {user && (
+              <div className="space-y-4">
+                <input
+                  type="number"
+                  placeholder="Enter amount ($50 minimum)"
+                  value={investmentAmount}
+                  onChange={(e) => setInvestmentAmount(e.target.value)}
+                  className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary/20 text-text-primary placeholder-text-muted font-mono transition-all duration-300"
+                  min="50"
+                />
+                {investmentAmount && getInvestmentTier(parseFloat(investmentAmount)) && (
+                  <div className="text-sm text-secondary font-semibold flex items-center space-x-2 bounce-in">
+                    <Zap size={16} />
+                    <span>{getInvestmentTier(parseFloat(investmentAmount))?.name} Tier Selected</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleInvestment}
+                  disabled={!investmentAmount || parseFloat(investmentAmount) < 50}
+                  className="w-full py-3 bg-secondary hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 rounded-xl font-semibold text-white transition-all duration-300 btn-animate"
+                >
+                  Invest Now
+                </button>
+              </div>
+            )}
+            
+            {!user && (
+              <div className="text-center py-4">
+                <p className="text-text-muted text-sm">Sign in to invest in this content</p>
+              </div>
+            )}
             
             <p className="text-xs text-text-muted mt-4 text-center">
               * Subject to terms and conditions
@@ -930,228 +1016,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       </div>
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="glass rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto border border-primary/20 bounce-in">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between p-6 border-b border-dark-border">
-              <h2 className="text-2xl font-bold text-text-primary flex items-center space-x-3">
-                <Upload size={24} className="text-primary" />
-                <span>Upload Video</span>
-              </h2>
-              <button 
-                onClick={closeUploadModal}
-                className="p-2 hover:bg-primary/20 rounded-xl transition-all duration-300 scale-hover"
-              >
-                <X size={24} className="text-text-secondary" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              {uploadStep === 1 ? (
-                /* Step 1: File Selection */
-                <div className="text-center">
-                  <div className="border-2 border-dashed border-primary/30 rounded-2xl p-12 mb-6 hover:border-primary/50 transition-all duration-300">
-                    <FileVideo size={64} className="mx-auto mb-4 text-primary opacity-70" />
-                    <h3 className="text-xl font-semibold mb-2 text-text-primary">Select Video File</h3>
-                    <p className="text-text-secondary mb-6">Choose a video file to upload</p>
-                    
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="video/*"
-                      onChange={handleVideoFileSelect}
-                      className="hidden"
-                    />
-                    
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-8 py-3 bg-primary text-white rounded-xl font-semibold hover:scale-105 transition-all duration-300 ripple"
-                    >
-                      Choose File
-                    </button>
-                  </div>
-                  
-                  <p className="text-sm text-text-muted">
-                    Supported formats: MP4, AVI, MOV, WMV • Max size: 2GB
-                  </p>
-                </div>
-              ) : (
-                /* Step 2: Video Details Form */
-                <form onSubmit={handleFormSubmit} className="space-y-6">
-                  {/* Selected File Info */}
-                  <div className="glass rounded-xl p-4 border border-primary/10">
-                    <div className="flex items-center space-x-3">
-                      <FileVideo size={20} className="text-primary" />
-                      <span className="font-medium text-text-primary">{uploadForm.videoFile?.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setUploadStep(1)}
-                        className="text-text-muted hover:text-primary text-sm transition-all duration-300"
-                      >
-                        Change
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Title */}
-                  <div>
-                    <label className="block text-sm font-semibold text-text-primary mb-2">
-                      Title *
-                    </label>
-                    <input
-                      type="text"
-                      value={uploadForm.title}
-                      onChange={(e) => setUploadForm(prev => ({ ...prev, title: e.target.value }))}
-                      className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary placeholder-text-muted transition-all duration-300"
-                      placeholder="Enter video title"
-                      required
-                    />
-                  </div>
-
-                  {/* Description */}
-                  <div>
-                    <label className="block text-sm font-semibold text-text-primary mb-2">
-                      Description
-                    </label>
-                    <textarea
-                      value={uploadForm.description}
-                      onChange={(e) => setUploadForm(prev => ({ ...prev, description: e.target.value }))}
-                      className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary placeholder-text-muted transition-all duration-300 resize-none"
-                      placeholder="Tell viewers about your video"
-                      rows={4}
-                    />
-                  </div>
-
-                  {/* Thumbnail */}
-                  <div>
-                    <label className="block text-sm font-semibold text-text-primary mb-2">
-                      Thumbnail
-                    </label>
-                    <div className="flex items-center space-x-4">
-                      <input
-                        ref={thumbnailInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleThumbnailSelect}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => thumbnailInputRef.current?.click()}
-                        className="flex items-center space-x-2 px-4 py-2 glass hover:bg-primary/20 rounded-xl transition-all duration-300 ripple"
-                      >
-                        <Image size={18} />
-                        <span>Choose Thumbnail</span>
-                      </button>
-                      {uploadForm.thumbnail && (
-                        <span className="text-sm text-text-secondary">{uploadForm.thumbnail.name}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Category and Tags Row */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* Category */}
-                    <div>
-                      <label className="block text-sm font-semibold text-text-primary mb-2">
-                        Category
-                      </label>
-                      <select
-                        value={uploadForm.category}
-                        onChange={(e) => setUploadForm(prev => ({ ...prev, category: e.target.value }))}
-                        className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary transition-all duration-300"
-                      >
-                        {categories.map(category => (
-                          <option key={category} value={category}>{category}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Visibility */}
-                    <div>
-                      <label className="block text-sm font-semibold text-text-primary mb-2">
-                        Visibility
-                      </label>
-                      <select
-                        value={uploadForm.visibility}
-                        onChange={(e) => setUploadForm(prev => ({ ...prev, visibility: e.target.value }))}
-                        className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary transition-all duration-300"
-                      >
-                        <option value="public">
-                          <Globe size={16} className="inline mr-2" />
-                          Public
-                        </option>
-                        <option value="unlisted">
-                          <Eye size={16} className="inline mr-2" />
-                          Unlisted
-                        </option>
-                        <option value="private">
-                          <Lock size={16} className="inline mr-2" />
-                          Private
-                        </option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Tags */}
-                  <div>
-                    <label className="block text-sm font-semibold text-text-primary mb-2">
-                      Tags
-                    </label>
-                    <input
-                      type="text"
-                      value={uploadForm.tags}
-                      onChange={(e) => setUploadForm(prev => ({ ...prev, tags: e.target.value }))}
-                      className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 text-text-primary placeholder-text-muted transition-all duration-300"
-                      placeholder="Add tags separated by commas"
-                    />
-                    <p className="text-xs text-text-muted mt-2">
-                      Tags help people find your video
-                    </p>
-                  </div>
-
-                  {/* Upload Progress */}
-                  {isUploading && (
-                    <div className="glass rounded-xl p-4 border border-primary/10">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-text-primary">Uploading...</span>
-                        <span className="text-sm font-bold text-primary">{Math.round(uploadProgress)}%</span>
-                      </div>
-                      <div className="w-full bg-dark-border rounded-full h-2 overflow-hidden">
-                        <div 
-                          className="progress-bar h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${uploadProgress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Form Actions */}
-                  <div className="flex justify-end space-x-4 pt-4 border-t border-dark-border">
-                    <button
-                      type="button"
-                      onClick={closeUploadModal}
-                      disabled={isUploading}
-                      className="px-6 py-3 text-text-secondary hover:text-text-primary transition-all duration-300 scale-hover disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isUploading || !uploadForm.title.trim()}
-                      className="px-8 py-3 bg-primary text-white rounded-xl font-semibold hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 transition-all duration-300 ripple"
-                    >
-                      {isUploading ? 'Uploading...' : 'Upload Video'}
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <VideoUploadModal 
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onVideoUploaded={onVideoUpload}
+      />
     </div>
   );
 };
