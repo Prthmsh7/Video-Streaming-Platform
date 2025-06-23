@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, Video, FileText, User, Clock, Eye, Zap, Database, Globe } from 'lucide-react';
+import { X, Upload, Video, FileText, User, Clock, Eye, Zap, Database, Globe, AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { filcdnClient, generateVideoMetadata, createFilecoinDeal } from '../lib/filcdn';
 import AuthModal from './AuthModal';
@@ -192,13 +192,19 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
       const duration = await getVideoDuration(selectedFile);
       const formattedDuration = formatDuration(duration);
 
-      setUploadStatus('Uploading to FilCDN (Filecoin network)...');
+      const isFileCDNEnabled = filcdnClient.isEnabled();
+      
+      if (isFileCDNEnabled) {
+        setUploadStatus('Uploading to FilCDN (Filecoin network)...');
+      } else {
+        setUploadStatus('Processing video (Demo mode - FilCDN disabled)...');
+      }
       setUploadProgress(30);
 
       // Generate metadata for Filecoin storage
       const videoMetadata = generateVideoMetadata(selectedFile, duration);
 
-      // Upload video to FilCDN
+      // Upload video to FilCDN (or simulate if disabled)
       const videoUploadResult = await filcdnClient.uploadFile(selectedFile, {
         filename: `${Date.now()}-${selectedFile.name}`,
         metadata: {
@@ -210,10 +216,15 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
       });
 
       setFilecoinCID(videoUploadResult.cid);
-      setUploadStatus('Video uploaded to Filecoin! Creating storage deal...');
+      
+      if (isFileCDNEnabled) {
+        setUploadStatus('Video uploaded to Filecoin! Creating storage deal...');
+      } else {
+        setUploadStatus('Video processed! Creating demo storage deal...');
+      }
       setUploadProgress(60);
 
-      // Create Filecoin deal
+      // Create Filecoin deal (simulated for demo)
       const deal = await createFilecoinDeal(videoUploadResult.cid, videoMetadata);
       setDealInfo(deal);
 
@@ -222,7 +233,12 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
       let thumbnailUrl = null;
       
       if (thumbnailFile) {
-        setUploadStatus('Uploading thumbnail to FilCDN...');
+        if (isFileCDNEnabled) {
+          setUploadStatus('Uploading thumbnail to FilCDN...');
+        } else {
+          setUploadStatus('Processing thumbnail...');
+        }
+        
         const thumbnailUploadResult = await filcdnClient.uploadFile(thumbnailFile, {
           filename: `thumbnail-${Date.now()}-${thumbnailFile.name}`,
           metadata: {
@@ -243,17 +259,18 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
         description: description.trim() || null,
         channel_name: channelName.trim(),
         thumbnail_url: thumbnailUrl || 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
-        video_url: filcdnClient.getStreamingUrl(videoUploadResult.cid),
+        video_url: videoUploadResult.url,
         duration: formattedDuration,
         user_id: user.id,
         views: 0,
         likes: 0,
         dislikes: 0,
-        // Store Filecoin-specific data in a JSON column or separate fields
+        // Store Filecoin-specific data
         filecoin_cid: videoUploadResult.cid,
         filecoin_deal_id: deal.dealId,
         storage_provider: deal.provider,
         file_size: videoUploadResult.size,
+        storage_status: deal.status,
       };
 
       // Insert video record into database
@@ -268,7 +285,11 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
         throw new Error(`Database error: ${insertError.message}`);
       }
 
-      setUploadStatus('Upload complete! Video stored on Filecoin network.');
+      if (isFileCDNEnabled) {
+        setUploadStatus('Upload complete! Video stored on Filecoin network.');
+      } else {
+        setUploadStatus('Upload complete! (Demo mode - enable FilCDN for real Filecoin storage)');
+      }
       setUploadProgress(100);
 
       // Create video object for the UI
@@ -325,6 +346,8 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
 
   if (!isOpen) return null;
 
+  const isFileCDNEnabled = filcdnClient.isEnabled();
+
   return (
     <>
       <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -336,8 +359,15 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                 <Database size={20} className="text-white" />
               </div>
               <div>
-                <h2 className="text-xl font-bold text-text-primary">Upload to Filecoin</h2>
-                <p className="text-sm text-text-secondary">Decentralized video storage via FilCDN</p>
+                <h2 className="text-xl font-bold text-text-primary">
+                  Upload to {isFileCDNEnabled ? 'Filecoin' : 'Platform (Demo)'}
+                </h2>
+                <p className="text-sm text-text-secondary">
+                  {isFileCDNEnabled 
+                    ? 'Decentralized video storage via FilCDN' 
+                    : 'Demo mode - Enable FilCDN for Filecoin storage'
+                  }
+                </p>
               </div>
             </div>
             <button 
@@ -350,19 +380,34 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
           </div>
 
           <div className="p-6 space-y-6">
-            {/* Filecoin Info Banner */}
-            <div className="p-4 bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20 rounded-xl">
+            {/* FilCDN Status Banner */}
+            <div className={`p-4 bg-gradient-to-r ${
+              isFileCDNEnabled 
+                ? 'from-primary/10 to-secondary/10 border-primary/20' 
+                : 'from-yellow-500/10 to-orange-500/10 border-yellow-500/20'
+            } border rounded-xl`}>
               <div className="flex items-center space-x-3 mb-2">
-                <Globe size={20} className="text-primary" />
-                <h3 className="font-semibold text-text-primary">Powered by Filecoin Network</h3>
+                {isFileCDNEnabled ? (
+                  <Globe size={20} className="text-primary" />
+                ) : (
+                  <AlertTriangle size={20} className="text-yellow-500" />
+                )}
+                <h3 className="font-semibold text-text-primary">
+                  {isFileCDNEnabled ? 'Powered by Filecoin Network' : 'Demo Mode Active'}
+                </h3>
               </div>
               <p className="text-sm text-text-secondary">
-                Your videos are stored on the decentralized Filecoin network, ensuring permanent, 
-                censorship-resistant storage with cryptographic proof of storage.
+                {isFileCDNEnabled ? (
+                  'Your videos are stored on the decentralized Filecoin network, ensuring permanent, censorship-resistant storage with cryptographic proof of storage.'
+                ) : (
+                  'FilCDN is currently disabled. Videos will be processed locally for demo purposes. To enable real Filecoin storage, configure your FilCDN credentials in the environment variables.'
+                )}
               </p>
               {filecoinCID && (
                 <div className="mt-3 p-2 bg-dark-surface rounded-lg">
-                  <p className="text-xs text-text-muted">Filecoin CID:</p>
+                  <p className="text-xs text-text-muted">
+                    {isFileCDNEnabled ? 'Filecoin CID:' : 'Demo CID:'}
+                  </p>
                   <p className="text-sm font-mono text-secondary break-all">{filecoinCID}</p>
                 </div>
               )}
@@ -374,7 +419,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-primary font-semibold">Sign in required</p>
-                    <p className="text-text-secondary text-sm">You need to be signed in to upload videos to Filecoin</p>
+                    <p className="text-text-secondary text-sm">You need to be signed in to upload videos</p>
                   </div>
                   <button
                     onClick={() => setShowAuthModal(true)}
@@ -438,7 +483,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                         {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
                       </p>
                       <p className="text-xs text-text-muted mt-1">
-                        Ready for Filecoin storage
+                        {isFileCDNEnabled ? 'Ready for Filecoin storage' : 'Ready for demo processing'}
                       </p>
                     </div>
                     <button
@@ -458,7 +503,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                         Drop your video here
                       </p>
                       <p className="text-text-secondary mb-4">
-                        Upload to decentralized Filecoin storage
+                        {isFileCDNEnabled ? 'Upload to decentralized Filecoin storage' : 'Process for demo platform'}
                       </p>
                       <button
                         onClick={() => fileInputRef.current?.click()}
@@ -468,7 +513,8 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                       </button>
                     </div>
                     <p className="text-xs text-text-muted">
-                      Supported formats: MP4, WebM, AVI, MOV • Stored permanently on Filecoin
+                      Supported formats: MP4, WebM, AVI, MOV
+                      {isFileCDNEnabled && ' • Stored permanently on Filecoin'}
                     </p>
                   </div>
                 )}
@@ -566,7 +612,8 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-text-muted">
-                  Optional: Upload a custom thumbnail (also stored on Filecoin)
+                  Optional: Upload a custom thumbnail
+                  {isFileCDNEnabled && ' (also stored on Filecoin)'}
                 </p>
                 <input
                   ref={thumbnailInputRef}
@@ -582,7 +629,9 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
             {isUploading && (
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-text-secondary">Uploading to Filecoin...</span>
+                  <span className="text-text-secondary">
+                    {isFileCDNEnabled ? 'Uploading to Filecoin...' : 'Processing video...'}
+                  </span>
                   <span className="text-primary font-medium">{uploadProgress}%</span>
                 </div>
                 <div className="w-full bg-dark-border rounded-full h-2">
@@ -611,12 +660,12 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                 {isUploading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span>Uploading to Filecoin...</span>
+                    <span>{isFileCDNEnabled ? 'Uploading to Filecoin...' : 'Processing...'}</span>
                   </>
                 ) : (
                   <>
                     <Database size={18} />
-                    <span>Upload to Filecoin</span>
+                    <span>{isFileCDNEnabled ? 'Upload to Filecoin' : 'Upload Video'}</span>
                   </>
                 )}
               </button>
