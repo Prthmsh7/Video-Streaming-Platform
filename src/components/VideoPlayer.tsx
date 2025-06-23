@@ -30,6 +30,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Video } from '../types/Video';
+import VideoUploadModal from './VideoUploadModal';
 
 interface VideoPlayerProps {
   video: Video;
@@ -75,7 +76,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showInvestmentSuccess, setShowInvestmentSuccess] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -257,37 +257,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('video/')) {
-      alert('Please select a video file');
-      return;
-    }
-
-    const videoUrl = URL.createObjectURL(file);
-    const newVideo: Video = {
-      id: Date.now().toString(),
-      title: file.name.replace(/\.[^/.]+$/, ''),
-      channel: 'Your Channel',
-      views: '0 views',
-      timestamp: 'Just now',
-      duration: '0:00',
-      thumbnail: '',
-      channelAvatar: 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-      description: `Uploaded video: ${file.name}`,
-      likes: '0',
-      subscribers: '1K',
-      videoUrl: videoUrl
-    };
-
-    onVideoUpload(newVideo);
+  const handleVideoUploaded = (uploadedVideo: Video) => {
+    onVideoUpload(uploadedVideo);
     setShowUploadModal(false);
-  };
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
   };
 
   const progressPercentage = (totalInvestment / investmentGoal) * 100;
@@ -640,21 +612,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-lg text-text-primary">Up Next</h3>
               <button 
-                onClick={handleUploadClick}
+                onClick={() => setShowUploadModal(true)}
                 className="flex items-center space-x-2 px-4 py-2 bg-secondary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 text-sm ripple"
               >
                 <Upload size={16} />
                 <span>Upload</span>
               </button>
             </div>
-            
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="video/*"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
             
             {/* Scrollable container for videos */}
             <div className={`space-y-4 ${upNextVideos.length > 3 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
@@ -827,6 +791,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Video Upload Modal */}
+      <VideoUploadModal 
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onVideoUploaded={handleVideoUploaded}
+      />
     </div>
   );
 };
