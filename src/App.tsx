@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import VideoPlayer from './components/VideoPlayer';
+import AuthModal from './components/AuthModal';
 import { Video } from './types/Video';
+import { supabase } from './lib/supabase';
+import { User, LogOut } from 'lucide-react';
 
 function App() {
   // Initial video queue with sample videos
@@ -51,11 +54,33 @@ function App() {
 
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
   // Page load animation
   useEffect(() => {
     setIsLoaded(true);
+    checkAuthStatus();
   }, []);
+
+  // Listen for auth changes
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const checkAuthStatus = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    setUser(user);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   const handleVideoUpload = (uploadedVideo: Video) => {
     setVideoQueue(prevQueue => [...prevQueue, uploadedVideo]);
@@ -79,13 +104,42 @@ function App() {
       {/* Header */}
       <header className="glass border-b border-dark-border sticky top-0 z-50 slide-in-left">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center pulse-glow morph-shape">
-              <span className="text-white font-bold text-lg">S</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center pulse-glow morph-shape">
+                <span className="text-white font-bold text-lg">S</span>
+              </div>
+              <h1 className="text-2xl font-bold text-primary">
+                Sillycon
+              </h1>
             </div>
-            <h1 className="text-2xl font-bold text-primary">
-              Sillycon
-            </h1>
+            
+            {/* Auth Section */}
+            <div className="flex items-center space-x-4">
+              {user ? (
+                <div className="flex items-center space-x-3">
+                  <div className="flex items-center space-x-2 text-text-secondary">
+                    <User size={18} />
+                    <span className="text-sm">{user.email}</span>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="flex items-center space-x-2 px-4 py-2 glass hover:bg-primary/20 rounded-lg transition-all duration-300 text-sm"
+                  >
+                    <LogOut size={16} />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-primary rounded-lg text-white font-medium hover:scale-105 transition-all duration-300 text-sm"
+                >
+                  <User size={16} />
+                  <span>Sign In</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -100,6 +154,13 @@ function App() {
           currentVideoIndex={currentVideoIndex}
         />
       )}
+
+      {/* Authentication Modal */}
+      <AuthModal 
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        onAuthSuccess={() => setShowAuthModal(false)}
+      />
     </div>
   );
 }
