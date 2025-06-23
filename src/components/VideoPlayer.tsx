@@ -31,11 +31,12 @@ import {
   Database,
   Globe,
   Shield,
-  Clock
+  Clock,
+  RotateCcw
 } from 'lucide-react';
 import { Video } from '../types/Video';
 import VideoUploadModal from './VideoUploadModal';
-import AIPresenterModal from './AIPresenterModal';
+import { tavusClient, TavusVideoResponse } from '../lib/tavus';
 
 interface VideoPlayerProps {
   video: Video;
@@ -57,7 +58,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showDescription, setShowDescription] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showPresenterModal, setShowPresenterModal] = useState(true); // Show presenter first
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -74,6 +74,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [showFilecoinInfo, setShowFilecoinInfo] = useState(false);
   
+  // AI Presenter states
+  const [isShowingPresenter, setIsShowingPresenter] = useState(true);
+  const [presenterVideo, setPresenterVideo] = useState<TavusVideoResponse | null>(null);
+  const [isGeneratingPresenter, setIsGeneratingPresenter] = useState(false);
+  const [presenterError, setPresenterError] = useState('');
+  const [autoPlayCountdown, setAutoPlayCountdown] = useState(0);
+  
   // Investment states
   const [investmentAmount, setInvestmentAmount] = useState('');
   const [selectedInvestmentTier, setSelectedInvestmentTier] = useState('');
@@ -85,6 +92,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+  const countdownRef = useRef<NodeJS.Timeout>();
 
   // Investment tiers
   const investmentTiers = [
@@ -94,9 +102,18 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     { name: 'Executive', min: 10000, max: Infinity, benefits: ['All Partner benefits', 'Revenue sharing', 'Direct collaboration opportunities'], color: 'text-yellow-400', icon: Zap }
   ];
 
-  // Show presenter modal when video changes
+  const presenter = tavusClient.getPresenter();
+  const isTavusEnabled = tavusClient.isEnabled();
+
+  // Generate presenter video when video changes
   useEffect(() => {
-    setShowPresenterModal(true);
+    setIsShowingPresenter(true);
+    setPresenterVideo(null);
+    setAutoPlayCountdown(0);
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+    }
+    generatePresenterVideo();
   }, [video.id]);
 
   // Auto-hide controls
@@ -121,32 +138,114 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [isPlaying]);
 
-  // Auto-play next video when current ends
+  // Handle video end - either presenter or main video
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
     const handleEnded = () => {
-      if (upNextVideos.length > 0) {
-        setTimeout(() => {
-          onNextVideo();
-        }, 2000);
+      if (isShowingPresenter) {
+        // Presenter video ended, start countdown to main video
+        setAutoPlayCountdown(3);
+        countdownRef.current = setInterval(() => {
+          setAutoPlayCountdown(prev => {
+            if (prev <= 1) {
+              playMainVideo();
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      } else {
+        // Main video ended, move to next video (which will show presenter first)
+        if (upNextVideos.length > 0) {
+          setTimeout(() => {
+            onNextVideo();
+          }, 2000);
+        }
       }
     };
 
     video.addEventListener('ended', handleEnded);
     return () => video.removeEventListener('ended', handleEnded);
-  }, [upNextVideos.length, onNextVideo]);
+  }, [isShowingPresenter, upNextVideos.length, onNextVideo]);
 
-  const handlePresenterComplete = () => {
-    setShowPresenterModal(false);
-    // Auto-play the main video after presenter
+  const generatePresenterVideo = async () => {
+    setIsGeneratingPresenter(true);
+    setPresenterError('');
+
+    try {
+      const request = {
+        videoTitle: video.title,
+        videoDescription: video.description || '',
+        channelName: video.channel,
+        duration: video.duration,
+        views: video.views,
+        additionalContext: {
+          category: 'general'
+        }
+      };
+
+      const result = await tavusClient.generatePresenterVideo(request);
+      setPresenterVideo(result);
+      
+      // Auto-play presenter video when ready
+      setTimeout(() => {
+        if (videoRef.current && isShowingPresenter) {
+          videoRef.current.play();
+          setIsPlaying(true);
+        }
+      }, 500);
+      
+    } catch (error) {
+      console.error('Failed to generate presenter video:', error);
+      setPresenterError('Failed to generate AI presenter. Skipping to main video...');
+      // Skip to main video if presenter generation fails
+      setTimeout(() => {
+        playMainVideo();
+      }, 2000);
+    } finally {
+      setIsGeneratingPresenter(false);
+    }
+  };
+
+  const playMainVideo = () => {
+    setIsShowingPresenter(false);
+    setAutoPlayCountdown(0);
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+    }
+    
+    // Reset video states for main video
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+    
+    // Auto-play main video after a brief moment
     setTimeout(() => {
       if (videoRef.current) {
         videoRef.current.play();
         setIsPlaying(true);
       }
     }, 500);
+  };
+
+  const skipToMainVideo = () => {
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+    }
+    playMainVideo();
+  };
+
+  const regeneratePresenter = () => {
+    setPresenterVideo(null);
+    setCurrentTime(0);
+    setDuration(0);
+    setAutoPlayCountdown(0);
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+    }
+    generatePresenterVideo();
   };
 
   const togglePlay = () => {
@@ -287,6 +386,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const progressPercentage = (totalInvestment / investmentGoal) * 100;
 
+  // Determine current video source and info
+  const currentVideoUrl = isShowingPresenter 
+    ? (presenterVideo?.videoUrl || '') 
+    : (video.videoUrl || video.thumbnail);
+  
+  const currentVideoTitle = isShowingPresenter 
+    ? `Sophia introduces: ${video.title}` 
+    : video.title;
+
   return (
     <div className="py-8 fade-in">
       <div className="flex flex-col lg:flex-row gap-8 px-6 max-w-7xl mx-auto">
@@ -299,10 +407,66 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onMouseMove={() => setShowControls(true)}
             onMouseLeave={() => isPlaying && setShowControls(false)}
           >
+            {/* AI Presenter Badge */}
+            {isShowingPresenter && (
+              <div className="absolute top-4 left-4 bg-gradient-to-r from-purple-500/90 to-pink-500/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2 z-10">
+                <Sparkles size={16} className="text-white" />
+                <span className="text-white text-sm font-medium">AI Presenter - Sophia</span>
+              </div>
+            )}
+
+            {/* Filecoin Badge */}
+            {!isShowingPresenter && video.filecoinCID && (
+              <div className="absolute top-4 right-4 bg-gradient-to-r from-primary/90 to-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2 z-10">
+                <Database size={16} className="text-white" />
+                <span className="text-white text-sm font-medium">Stored on Filecoin</span>
+              </div>
+            )}
+
+            {/* Loading/Error States */}
+            {isShowingPresenter && isGeneratingPresenter && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black z-20">
+                <div className="text-center">
+                  <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-white font-medium">
+                    {isTavusEnabled ? 'Sophia is preparing your video introduction...' : 'Preparing demo presenter...'}
+                  </p>
+                  <p className="text-white/70 text-sm mt-2">This may take a moment</p>
+                </div>
+              </div>
+            )}
+
+            {isShowingPresenter && presenterError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black z-20">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <X size={32} className="text-red-400" />
+                  </div>
+                  <p className="text-red-400 font-medium mb-2">Presenter Generation Failed</p>
+                  <p className="text-white/70 text-sm mb-4">{presenterError}</p>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={regeneratePresenter}
+                      className="px-4 py-2 bg-primary rounded-lg text-white hover:scale-105 transition-all duration-300"
+                    >
+                      Try Again
+                    </button>
+                    <button
+                      onClick={skipToMainVideo}
+                      className="px-4 py-2 bg-secondary rounded-lg text-white hover:scale-105 transition-all duration-300"
+                    >
+                      Skip to Video
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Main Video Element */}
             <video
               ref={videoRef}
-              src={video.videoUrl || video.thumbnail}
-              poster={video.thumbnail}
+              src={currentVideoUrl}
+              poster={isShowingPresenter ? presenter.avatarUrl : video.thumbnail}
               className="w-full aspect-video object-cover"
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
@@ -310,19 +474,25 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               onPause={() => setIsPlaying(false)}
             />
             
-            {/* Filecoin Badge */}
-            {video.filecoinCID && (
-              <div className="absolute top-4 right-4 bg-gradient-to-r from-primary/90 to-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2">
-                <Database size={16} className="text-white" />
-                <span className="text-white text-sm font-medium">Stored on Filecoin</span>
+            {/* Auto-play Countdown Overlay */}
+            {autoPlayCountdown > 0 && (
+              <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-30">
+                <div className="text-center">
+                  <div className="flex items-center justify-center space-x-2 mb-4">
+                    <Zap size={24} className="text-secondary" />
+                    <h3 className="text-xl font-semibold text-white">Starting Main Video</h3>
+                  </div>
+                  <div className="text-6xl font-bold text-secondary mb-4">{autoPlayCountdown}</div>
+                  <p className="text-white/80 mb-4">Video will start automatically</p>
+                  <button
+                    onClick={skipToMainVideo}
+                    className="px-6 py-3 bg-secondary rounded-lg text-white hover:scale-105 transition-all duration-300"
+                  >
+                    Start Now
+                  </button>
+                </div>
               </div>
             )}
-            
-            {/* AI Presenter Badge */}
-            <div className="absolute top-4 left-4 bg-gradient-to-r from-purple-500/90 to-pink-500/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2">
-              <Sparkles size={16} className="text-white" />
-              <span className="text-white text-sm font-medium">AI Presenter Available</span>
-            </div>
             
             {/* Video Controls Overlay */}
             <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-all duration-300 ${
@@ -361,13 +531,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       {isPlaying ? <Pause size={28} /> : <Play size={28} />}
                     </button>
                     
-                    <button onClick={() => skipTime(-10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
-                      <SkipBack size={24} />
-                    </button>
-                    
-                    <button onClick={() => skipTime(10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
-                      <SkipForward size={24} />
-                    </button>
+                    {!isShowingPresenter && (
+                      <>
+                        <button onClick={() => skipTime(-10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                          <SkipBack size={24} />
+                        </button>
+                        
+                        <button onClick={() => skipTime(10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                          <SkipForward size={24} />
+                        </button>
+                      </>
+                    )}
 
                     <div className="flex items-center space-x-3">
                       <button onClick={toggleMute} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
@@ -390,14 +564,27 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-4">
-                    {/* AI Presenter Button */}
-                    <button 
-                      onClick={() => setShowPresenterModal(true)}
-                      className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white hover:scale-105 transition-all duration-300"
-                    >
-                      <Sparkles size={16} />
-                      <span className="text-sm">AI Presenter</span>
-                    </button>
+                    {/* Regenerate Presenter Button (only during presenter) */}
+                    {isShowingPresenter && presenterVideo && (
+                      <button 
+                        onClick={regeneratePresenter}
+                        className="flex items-center space-x-2 px-3 py-2 bg-purple-500/80 rounded-lg text-white hover:scale-105 transition-all duration-300"
+                      >
+                        <RotateCcw size={16} />
+                        <span className="text-sm">Regenerate</span>
+                      </button>
+                    )}
+
+                    {/* Skip to Main Video Button (only during presenter) */}
+                    {isShowingPresenter && (
+                      <button 
+                        onClick={skipToMainVideo}
+                        className="flex items-center space-x-2 px-3 py-2 bg-secondary/80 rounded-lg text-white hover:scale-105 transition-all duration-300"
+                      >
+                        <SkipForward size={16} />
+                        <span className="text-sm">Skip to Video</span>
+                      </button>
+                    )}
 
                     <div className="relative">
                       <button 
@@ -450,12 +637,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
           {/* Video Info */}
           <div className="mb-6 slide-in-left">
-            <h1 className="text-2xl font-bold mb-4 text-text-primary">{video.title}</h1>
+            <h1 className="text-2xl font-bold mb-4 text-text-primary">{currentVideoTitle}</h1>
             
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center space-x-4 text-text-secondary">
                 <span className="font-medium">{video.views}</span>
-                {video.filecoinCID && (
+                {!isShowingPresenter && video.filecoinCID && (
                   <button
                     onClick={() => setShowFilecoinInfo(!showFilecoinInfo)}
                     className="flex items-center space-x-2 px-3 py-1 bg-primary/10 rounded-lg text-primary hover:bg-primary/20 transition-all duration-300"
@@ -464,68 +651,94 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="text-sm font-medium">Filecoin</span>
                   </button>
                 )}
+                {isShowingPresenter && (
+                  <div className="flex items-center space-x-2 px-3 py-1 bg-purple-500/10 rounded-lg text-purple-400">
+                    <Sparkles size={14} />
+                    <span className="text-sm font-medium">AI Introduction</span>
+                  </div>
+                )}
               </div>
               
-              <div className="flex items-center space-x-3">
-                <button 
-                  onClick={handleLike}
-                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
-                    isLiked ? 'text-primary bg-primary/10' : ''
-                  }`}
-                >
-                  <Heart size={20} className={isLiked ? 'fill-current' : ''} />
-                  <span className="font-medium">{video.likes}</span>
-                </button>
-                
-                <button 
-                  onClick={handleDislike}
-                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
-                    isDisliked ? 'text-red-400 bg-red-400/10' : ''
-                  }`}
-                >
-                  <ThumbsDown size={20} className={isDisliked ? 'fill-current' : ''} />
-                </button>
-                
-                <div className="relative">
+              {!isShowingPresenter && (
+                <div className="flex items-center space-x-3">
                   <button 
-                    onClick={() => setShowShareMenu(!showShareMenu)}
-                    className="flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple"
+                    onClick={handleLike}
+                    className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
+                      isLiked ? 'text-primary bg-primary/10' : ''
+                    }`}
                   >
-                    <Share size={20} />
-                    <span className="font-medium">Share</span>
+                    <Heart size={20} className={isLiked ? 'fill-current' : ''} />
+                    <span className="font-medium">{video.likes}</span>
                   </button>
                   
-                  {showShareMenu && (
-                    <div className="absolute top-full mt-2 right-0 glass rounded-xl shadow-2xl w-48 py-3 border border-primary/20 bounce-in z-10">
-                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Copy Link</button>
-                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share on Twitter</button>
-                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share on Facebook</button>
-                      <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Embed Video</button>
-                      {video.filecoinCID && (
-                        <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share Filecoin CID</button>
-                      )}
-                    </div>
-                  )}
+                  <button 
+                    onClick={handleDislike}
+                    className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
+                      isDisliked ? 'text-red-400 bg-red-400/10' : ''
+                    }`}
+                  >
+                    <ThumbsDown size={20} className={isDisliked ? 'fill-current' : ''} />
+                  </button>
+                  
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowShareMenu(!showShareMenu)}
+                      className="flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple"
+                    >
+                      <Share size={20} />
+                      <span className="font-medium">Share</span>
+                    </button>
+                    
+                    {showShareMenu && (
+                      <div className="absolute top-full mt-2 right-0 glass rounded-xl shadow-2xl w-48 py-3 border border-primary/20 bounce-in z-10">
+                        <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Copy Link</button>
+                        <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share on Twitter</button>
+                        <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share on Facebook</button>
+                        <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Embed Video</button>
+                        {video.filecoinCID && (
+                          <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share Filecoin CID</button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  <button 
+                    onClick={handleSave}
+                    className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
+                      isSaved ? 'text-secondary bg-secondary/10' : ''
+                    }`}
+                  >
+                    <Bookmark size={20} className={isSaved ? 'fill-current' : ''} />
+                    <span className="font-medium">Save</span>
+                  </button>
+                  
+                  <button className="p-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 scale-hover ripple">
+                    <MoreHorizontal size={20} />
+                  </button>
                 </div>
-                
-                <button 
-                  onClick={handleSave}
-                  className={`flex items-center space-x-2 px-6 py-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 btn-animate ripple ${
-                    isSaved ? 'text-secondary bg-secondary/10' : ''
-                  }`}
-                >
-                  <Bookmark size={20} className={isSaved ? 'fill-current' : ''} />
-                  <span className="font-medium">Save</span>
-                </button>
-                
-                <button className="p-3 glass hover:bg-primary/20 rounded-xl transition-all duration-300 scale-hover ripple">
-                  <MoreHorizontal size={20} />
-                </button>
-              </div>
+              )}
             </div>
 
+            {/* Presenter Transcript */}
+            {isShowingPresenter && presenterVideo?.transcript && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-xl bounce-in">
+                <div className="flex items-center space-x-3 mb-3">
+                  <img
+                    src={presenter.avatarUrl}
+                    alt={presenter.name}
+                    className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-400/30"
+                  />
+                  <div>
+                    <h3 className="font-semibold text-text-primary">{presenter.name} says:</h3>
+                    <p className="text-xs text-purple-400">AI Video Host</p>
+                  </div>
+                </div>
+                <p className="text-sm text-text-secondary leading-relaxed italic">"{presenterVideo.transcript}"</p>
+              </div>
+            )}
+
             {/* Filecoin Info Panel */}
-            {showFilecoinInfo && video.filecoinCID && (
+            {!isShowingPresenter && showFilecoinInfo && video.filecoinCID && (
               <div className="mt-4 p-4 bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20 rounded-xl bounce-in">
                 <div className="flex items-center space-x-3 mb-3">
                   <Globe size={20} className="text-primary" />
@@ -571,142 +784,146 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             )}
           </div>
 
-          {/* Channel Info */}
-          <div className="glass rounded-2xl p-6 mb-6 border border-primary/10 slide-in-right">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center space-x-4">
-                <div className="relative">
-                  <img 
-                    src={video.channelAvatar} 
-                    alt={video.channel}
-                    className="w-14 h-14 rounded-full ring-2 ring-primary/30 morph-shape"
-                  />
-                  <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-secondary rounded-full border-2 border-dark-surface pulse-glow"></div>
+          {/* Channel Info - Only show for main video */}
+          {!isShowingPresenter && (
+            <div className="glass rounded-2xl p-6 mb-6 border border-primary/10 slide-in-right">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center space-x-4">
+                  <div className="relative">
+                    <img 
+                      src={video.channelAvatar} 
+                      alt={video.channel}
+                      className="w-14 h-14 rounded-full ring-2 ring-primary/30 morph-shape"
+                    />
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-secondary rounded-full border-2 border-dark-surface pulse-glow"></div>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg text-text-primary">{video.channel}</h3>
+                    <p className="text-text-secondary">{video.subscribers} subscribers</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-semibold text-lg text-text-primary">{video.channel}</h3>
-                  <p className="text-text-secondary">{video.subscribers} subscribers</p>
+                
+                <div className="flex items-center space-x-3">
+                  <button 
+                    onClick={() => setIsSubscribed(!isSubscribed)}
+                    className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 btn-animate ripple ${
+                      isSubscribed 
+                        ? 'glass text-text-secondary hover:bg-primary/20' 
+                        : 'bg-primary text-white hover:scale-105 shadow-lg'
+                    }`}
+                  >
+                    <Zap size={18} />
+                    <span>{isSubscribed ? 'Subscribed' : 'Subscribe'}</span>
+                  </button>
                 </div>
               </div>
               
-              <div className="flex items-center space-x-3">
+              {/* Description */}
+              <div className="text-text-secondary">
+                <p className={`leading-relaxed transition-all duration-500 ${showDescription ? '' : 'line-clamp-3'}`}>
+                  {video.description}
+                </p>
                 <button 
-                  onClick={() => setIsSubscribed(!isSubscribed)}
-                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 btn-animate ripple ${
-                    isSubscribed 
-                      ? 'glass text-text-secondary hover:bg-primary/20' 
-                      : 'bg-primary text-white hover:scale-105 shadow-lg'
-                  }`}
+                  onClick={() => setShowDescription(!showDescription)}
+                  className="flex items-center space-x-2 text-primary hover:text-primary-light mt-3 transition-all duration-300 font-medium scale-hover"
                 >
-                  <Zap size={18} />
-                  <span>{isSubscribed ? 'Subscribed' : 'Subscribe'}</span>
+                  <span>{showDescription ? 'Show less' : 'Show more'}</span>
+                  {showDescription ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                 </button>
               </div>
             </div>
-            
-            {/* Description */}
-            <div className="text-text-secondary">
-              <p className={`leading-relaxed transition-all duration-500 ${showDescription ? '' : 'line-clamp-3'}`}>
-                {video.description}
-              </p>
-              <button 
-                onClick={() => setShowDescription(!showDescription)}
-                className="flex items-center space-x-2 text-primary hover:text-primary-light mt-3 transition-all duration-300 font-medium scale-hover"
-              >
-                <span>{showDescription ? 'Show less' : 'Show more'}</span>
-                {showDescription ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-              </button>
-            </div>
-          </div>
+          )}
 
-          {/* Comments Section */}
-          <div className="glass rounded-2xl p-6 border border-primary/10 slide-in-left">
-            <h3 className="font-bold mb-6 text-xl text-text-primary flex items-center space-x-2">
-              <Send size={20} className="text-primary" />
-              <span>1,234 Comments</span>
-            </h3>
-            
-            {/* Add Comment */}
-            <div className="flex space-x-4 mb-8">
-              <img 
-                src="https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
-                alt="Your avatar"
-                className="w-12 h-12 rounded-full ring-2 ring-primary/30 float-animation"
-              />
-              <div className="flex-1">
-                <input 
-                  type="text" 
-                  placeholder="Add a comment..."
-                  className="w-full bg-transparent border-b-2 border-dark-border pb-3 outline-none focus:border-primary transition-all duration-300 text-text-primary placeholder-text-muted"
-                />
-                <div className="flex justify-end space-x-3 mt-4">
-                  <button className="px-4 py-2 text-text-secondary hover:text-text-primary transition-all duration-300 scale-hover">
-                    Cancel
-                  </button>
-                  <button className="px-6 py-2 bg-primary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 ripple">
-                    Comment
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Comments List */}
-            <div className="space-y-6">
-              <div className="flex space-x-4 stagger-item">
-                <img 
-                  src="https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
-                  alt="User"
-                  className="w-12 h-12 rounded-full ring-2 ring-secondary/30"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className="font-semibold text-text-primary">@techexplorer</span>
-                    <span className="text-text-muted text-sm">2 hours ago</span>
-                  </div>
-                  <p className="text-text-secondary mb-3 leading-relaxed">Great video! Love that it's stored on Filecoin - truly decentralized content!</p>
-                  <div className="flex items-center space-x-6">
-                    <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
-                      <ThumbsUp size={16} />
-                      <span className="text-sm font-medium">24</span>
-                    </button>
-                    <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
-                      <ThumbsDown size={16} />
-                    </button>
-                    <button className="text-text-muted hover:text-primary text-sm font-medium transition-all duration-300 scale-hover">
-                      Reply
-                    </button>
-                  </div>
-                </div>
-              </div>
+          {/* Comments Section - Only show for main video */}
+          {!isShowingPresenter && (
+            <div className="glass rounded-2xl p-6 border border-primary/10 slide-in-left">
+              <h3 className="font-bold mb-6 text-xl text-text-primary flex items-center space-x-2">
+                <Send size={20} className="text-primary" />
+                <span>1,234 Comments</span>
+              </h3>
               
-              <div className="flex space-x-4 stagger-item">
+              {/* Add Comment */}
+              <div className="flex space-x-4 mb-8">
                 <img 
-                  src="https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
-                  alt="User"
-                  className="w-12 h-12 rounded-full ring-2 ring-accent/30"
+                  src="https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
+                  alt="Your avatar"
+                  className="w-12 h-12 rounded-full ring-2 ring-primary/30 float-animation"
                 />
                 <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <span className="font-semibold text-text-primary">@developer456</span>
-                    <span className="text-text-muted text-sm">5 hours ago</span>
-                  </div>
-                  <p className="text-text-secondary mb-3 leading-relaxed">Amazing to see decentralized storage in action! The future of content is here.</p>
-                  <div className="flex items-center space-x-6">
-                    <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
-                      <ThumbsUp size={16} />
-                      <span className="text-sm font-medium">12</span>
+                  <input 
+                    type="text" 
+                    placeholder="Add a comment..."
+                    className="w-full bg-transparent border-b-2 border-dark-border pb-3 outline-none focus:border-primary transition-all duration-300 text-text-primary placeholder-text-muted"
+                  />
+                  <div className="flex justify-end space-x-3 mt-4">
+                    <button className="px-4 py-2 text-text-secondary hover:text-text-primary transition-all duration-300 scale-hover">
+                      Cancel
                     </button>
-                    <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
-                      <ThumbsDown size={16} />
-                    </button>
-                    <button className="text-text-muted hover:text-primary text-sm font-medium transition-all duration-300 scale-hover">
-                      Reply
+                    <button className="px-6 py-2 bg-primary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 ripple">
+                      Comment
                     </button>
                   </div>
                 </div>
               </div>
+
+              {/* Comments List */}
+              <div className="space-y-6">
+                <div className="flex space-x-4 stagger-item">
+                  <img 
+                    src="https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
+                    alt="User"
+                    className="w-12 h-12 rounded-full ring-2 ring-secondary/30"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <span className="font-semibold text-text-primary">@techexplorer</span>
+                      <span className="text-text-muted text-sm">2 hours ago</span>
+                    </div>
+                    <p className="text-text-secondary mb-3 leading-relaxed">Great video! Love that it's stored on Filecoin - truly decentralized content!</p>
+                    <div className="flex items-center space-x-6">
+                      <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
+                        <ThumbsUp size={16} />
+                        <span className="text-sm font-medium">24</span>
+                      </button>
+                      <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
+                        <ThumbsDown size={16} />
+                      </button>
+                      <button className="text-text-muted hover:text-primary text-sm font-medium transition-all duration-300 scale-hover">
+                        Reply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex space-x-4 stagger-item">
+                  <img 
+                    src="https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2" 
+                    alt="User"
+                    className="w-12 h-12 rounded-full ring-2 ring-accent/30"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-3 mb-2">
+                      <span className="font-semibold text-text-primary">@developer456</span>
+                      <span className="text-text-muted text-sm">5 hours ago</span>
+                    </div>
+                    <p className="text-text-secondary mb-3 leading-relaxed">Amazing to see decentralized storage in action! The future of content is here.</p>
+                    <div className="flex items-center space-x-6">
+                      <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
+                        <ThumbsUp size={16} />
+                        <span className="text-sm font-medium">12</span>
+                      </button>
+                      <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
+                        <ThumbsDown size={16} />
+                      </button>
+                      <button className="text-text-muted hover:text-primary text-sm font-medium transition-all duration-300 scale-hover">
+                        Reply
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Right Sidebar */}
@@ -776,134 +993,136 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             </div>
           </div>
 
-          {/* Investment Section */}
-          <div className="glass rounded-2xl p-6 border border-secondary/20 relative overflow-hidden">
-            {/* Success notification */}
-            {showInvestmentSuccess && (
-              <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg bounce-in z-10">
-                <div className="flex items-center space-x-2">
-                  <Sparkles size={16} />
-                  <span className="text-sm font-medium">Investment successful!</span>
-                </div>
-              </div>
-            )}
-            
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center pulse-glow">
-                <DollarSign size={20} className="text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-text-primary">Invest in Content</h3>
-            </div>
-            
-            {/* Investment Progress */}
-            <div className="mb-6">
-              <div className="flex justify-between items-center mb-3">
-                <span className="text-sm text-text-secondary font-medium">Funding Progress</span>
-                <span className="text-sm font-bold text-secondary">{Math.round(progressPercentage)}%</span>
-              </div>
-              <div className="w-full bg-dark-border rounded-full h-3 mb-3 overflow-hidden">
-                <div 
-                  className="progress-bar h-3 rounded-full transition-all duration-1000 ease-out"
-                  style={{ width: `${Math.min(progressPercentage, 100)}%` }}
-                ></div>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-secondary font-bold">{formatCurrency(totalInvestment)}</span>
-                <span className="text-text-muted">Goal: {formatCurrency(investmentGoal)}</span>
-              </div>
-            </div>
-
-            {/* Investment Stats */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="text-center p-3 glass rounded-xl card-hover">
-                <div className="flex items-center justify-center mb-2">
-                  <Users size={20} className="text-blue-400" />
-                </div>
-                <div className="text-lg font-bold text-text-primary">{totalInvestors}</div>
-                <div className="text-xs text-text-muted">Investors</div>
-              </div>
-              <div className="text-center p-3 glass rounded-xl card-hover">
-                <div className="flex items-center justify-center mb-2">
-                  <TrendingUp size={20} className="text-green-400" />
-                </div>
-                <div className="text-lg font-bold text-text-primary">{formatCurrency(totalInvestment / totalInvestors)}</div>
-                <div className="text-xs text-text-muted">Average</div>
-              </div>
-              <div className="text-center p-3 glass rounded-xl card-hover">
-                <div className="flex items-center justify-center mb-2">
-                  <Target size={20} className="text-purple-400" />
-                </div>
-                <div className="text-lg font-bold text-text-primary">{Math.max(0, Math.round((investmentGoal - totalInvestment) / 1000))}K</div>
-                <div className="text-xs text-text-muted">Remaining</div>
-              </div>
-            </div>
-
-            {/* Investment Tiers */}
-            <div className="mb-6">
-              <h4 className="text-sm font-semibold mb-4 text-text-primary">Investment Tiers</h4>
-              <div className="space-y-3">
-                {investmentTiers.map((tier, index) => {
-                  const IconComponent = tier.icon;
-                  return (
-                    <div 
-                      key={tier.name}
-                      className={`border rounded-xl p-4 cursor-pointer transition-all duration-300 stagger-item card-hover ${
-                        selectedInvestmentTier === tier.name 
-                          ? 'border-secondary bg-secondary/10' 
-                          : 'border-dark-border hover:border-primary/50 hover:bg-primary/5'
-                      }`}
-                      onClick={() => setSelectedInvestmentTier(tier.name)}
-                      style={{ animationDelay: `${index * 0.1}s` }}
-                    >
-                      <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center space-x-2">
-                          <IconComponent size={16} className={tier.color} />
-                          <span className={`font-semibold ${tier.color}`}>
-                            {tier.name}
-                          </span>
-                        </div>
-                        <span className="text-text-muted text-sm font-mono">
-                          {formatCurrency(tier.min)}{tier.max !== Infinity ? ` - ${formatCurrency(tier.max)}` : '+'}
-                        </span>
-                      </div>
-                      <div className="text-xs text-text-secondary">
-                        {tier.benefits.slice(0, 2).join(' • ')}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Investment Input */}
-            <div className="space-y-4">
-              <input
-                type="number"
-                placeholder="Enter amount ($50 minimum)"
-                value={investmentAmount}
-                onChange={(e) => setInvestmentAmount(e.target.value)}
-                className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary/20 text-text-primary placeholder-text-muted font-mono transition-all duration-300"
-                min="50"
-              />
-              {investmentAmount && getInvestmentTier(parseFloat(investmentAmount)) && (
-                <div className="text-sm text-secondary font-semibold flex items-center space-x-2 bounce-in">
-                  <Zap size={16} />
-                  <span>{getInvestmentTier(parseFloat(investmentAmount))?.name} Tier Selected</span>
+          {/* Investment Section - Only show for main video */}
+          {!isShowingPresenter && (
+            <div className="glass rounded-2xl p-6 border border-secondary/20 relative overflow-hidden">
+              {/* Success notification */}
+              {showInvestmentSuccess && (
+                <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg bounce-in z-10">
+                  <div className="flex items-center space-x-2">
+                    <Sparkles size={16} />
+                    <span className="text-sm font-medium">Investment successful!</span>
+                  </div>
                 </div>
               )}
-              <button
-                onClick={handleInvestment}
-                disabled={!investmentAmount || parseFloat(investmentAmount) < 50}
-                className="w-full py-3 bg-secondary hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 rounded-xl font-semibold text-white transition-all duration-300 btn-animate ripple"
-              >
-                Invest Now
-              </button>
+              
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 bg-secondary rounded-xl flex items-center justify-center pulse-glow">
+                  <DollarSign size={20} className="text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-text-primary">Invest in Content</h3>
+              </div>
+              
+              {/* Investment Progress */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-3">
+                  <span className="text-sm text-text-secondary font-medium">Funding Progress</span>
+                  <span className="text-sm font-bold text-secondary">{Math.round(progressPercentage)}%</span>
+                </div>
+                <div className="w-full bg-dark-border rounded-full h-3 mb-3 overflow-hidden">
+                  <div 
+                    className="progress-bar h-3 rounded-full transition-all duration-1000 ease-out"
+                    style={{ width: `${Math.min(progressPercentage, 100)}%` }}
+                  ></div>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-secondary font-bold">{formatCurrency(totalInvestment)}</span>
+                  <span className="text-text-muted">Goal: {formatCurrency(investmentGoal)}</span>
+                </div>
+              </div>
+
+              {/* Investment Stats */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="text-center p-3 glass rounded-xl card-hover">
+                  <div className="flex items-center justify-center mb-2">
+                    <Users size={20} className="text-blue-400" />
+                  </div>
+                  <div className="text-lg font-bold text-text-primary">{totalInvestors}</div>
+                  <div className="text-xs text-text-muted">Investors</div>
+                </div>
+                <div className="text-center p-3 glass rounded-xl card-hover">
+                  <div className="flex items-center justify-center mb-2">
+                    <TrendingUp size={20} className="text-green-400" />
+                  </div>
+                  <div className="text-lg font-bold text-text-primary">{formatCurrency(totalInvestment / totalInvestors)}</div>
+                  <div className="text-xs text-text-muted">Average</div>
+                </div>
+                <div className="text-center p-3 glass rounded-xl card-hover">
+                  <div className="flex items-center justify-center mb-2">
+                    <Target size={20} className="text-purple-400" />
+                  </div>
+                  <div className="text-lg font-bold text-text-primary">{Math.max(0, Math.round((investmentGoal - totalInvestment) / 1000))}K</div>
+                  <div className="text-xs text-text-muted">Remaining</div>
+                </div>
+              </div>
+
+              {/* Investment Tiers */}
+              <div className="mb-6">
+                <h4 className="text-sm font-semibold mb-4 text-text-primary">Investment Tiers</h4>
+                <div className="space-y-3">
+                  {investmentTiers.map((tier, index) => {
+                    const IconComponent = tier.icon;
+                    return (
+                      <div 
+                        key={tier.name}
+                        className={`border rounded-xl p-4 cursor-pointer transition-all duration-300 stagger-item card-hover ${
+                          selectedInvestmentTier === tier.name 
+                            ? 'border-secondary bg-secondary/10' 
+                            : 'border-dark-border hover:border-primary/50 hover:bg-primary/5'
+                        }`}
+                        onClick={() => setSelectedInvestmentTier(tier.name)}
+                        style={{ animationDelay: `${index * 0.1}s` }}
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <div className="flex items-center space-x-2">
+                            <IconComponent size={16} className={tier.color} />
+                            <span className={`font-semibold ${tier.color}`}>
+                              {tier.name}
+                            </span>
+                          </div>
+                          <span className="text-text-muted text-sm font-mono">
+                            {formatCurrency(tier.min)}{tier.max !== Infinity ? ` - ${formatCurrency(tier.max)}` : '+'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-text-secondary">
+                          {tier.benefits.slice(0, 2).join(' • ')}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Investment Input */}
+              <div className="space-y-4">
+                <input
+                  type="number"
+                  placeholder="Enter amount ($50 minimum)"
+                  value={investmentAmount}
+                  onChange={(e) => setInvestmentAmount(e.target.value)}
+                  className="w-full px-4 py-3 bg-dark-surface border border-dark-border rounded-xl focus:border-secondary focus:outline-none focus:ring-2 focus:ring-secondary/20 text-text-primary placeholder-text-muted font-mono transition-all duration-300"
+                  min="50"
+                />
+                {investmentAmount && getInvestmentTier(parseFloat(investmentAmount)) && (
+                  <div className="text-sm text-secondary font-semibold flex items-center space-x-2 bounce-in">
+                    <Zap size={16} />
+                    <span>{getInvestmentTier(parseFloat(investmentAmount))?.name} Tier Selected</span>
+                  </div>
+                )}
+                <button
+                  onClick={handleInvestment}
+                  disabled={!investmentAmount || parseFloat(investmentAmount) < 50}
+                  className="w-full py-3 bg-secondary hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 rounded-xl font-semibold text-white transition-all duration-300 btn-animate ripple"
+                >
+                  Invest Now
+                </button>
+              </div>
+              
+              <p className="text-xs text-text-muted mt-4 text-center">
+                * Subject to terms and conditions
+              </p>
             </div>
-            
-            <p className="text-xs text-text-muted mt-4 text-center">
-              * Subject to terms and conditions
-            </p>
-          </div>
+          )}
         </div>
       </div>
 
@@ -912,14 +1131,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onVideoUploaded={handleVideoUploaded}
-      />
-
-      {/* AI Presenter Modal */}
-      <AIPresenterModal
-        isOpen={showPresenterModal}
-        onClose={() => setShowPresenterModal(false)}
-        onContinueToVideo={handlePresenterComplete}
-        video={video}
       />
     </div>
   );
