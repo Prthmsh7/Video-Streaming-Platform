@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { Video } from '../types/Video';
 import VideoUploadModal from './VideoUploadModal';
+import AIPresenterModal from './AIPresenterModal';
 
 interface VideoPlayerProps {
   video: Video;
@@ -56,6 +57,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [showDescription, setShowDescription] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showPresenterModal, setShowPresenterModal] = useState(true); // Show presenter first
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -91,6 +93,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     { name: 'Partner', min: 2500, max: 9999, benefits: ['All Backer benefits', 'Co-producer credit', 'Input on future content'], color: 'text-pink-400', icon: Sparkles },
     { name: 'Executive', min: 10000, max: Infinity, benefits: ['All Partner benefits', 'Revenue sharing', 'Direct collaboration opportunities'], color: 'text-yellow-400', icon: Zap }
   ];
+
+  // Show presenter modal when video changes
+  useEffect(() => {
+    setShowPresenterModal(true);
+  }, [video.id]);
 
   // Auto-hide controls
   useEffect(() => {
@@ -130,6 +137,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     video.addEventListener('ended', handleEnded);
     return () => video.removeEventListener('ended', handleEnded);
   }, [upNextVideos.length, onNextVideo]);
+
+  const handlePresenterComplete = () => {
+    setShowPresenterModal(false);
+    // Auto-play the main video after presenter
+    setTimeout(() => {
+      if (videoRef.current) {
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
+    }, 500);
+  };
 
   const togglePlay = () => {
     const video = videoRef.current;
@@ -300,6 +318,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
             )}
             
+            {/* AI Presenter Badge */}
+            <div className="absolute top-4 left-4 bg-gradient-to-r from-purple-500/90 to-pink-500/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2">
+              <Sparkles size={16} className="text-white" />
+              <span className="text-white text-sm font-medium">AI Presenter Available</span>
+            </div>
+            
             {/* Video Controls Overlay */}
             <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-all duration-300 ${
               showControls ? 'opacity-100' : 'opacity-0'
@@ -366,6 +390,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-4">
+                    {/* AI Presenter Button */}
+                    <button 
+                      onClick={() => setShowPresenterModal(true)}
+                      className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white hover:scale-105 transition-all duration-300"
+                    >
+                      <Sparkles size={16} />
+                      <span className="text-sm">AI Presenter</span>
+                    </button>
+
                     <div className="relative">
                       <button 
                         onClick={() => setShowSettings(!showSettings)}
@@ -879,6 +912,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onVideoUploaded={handleVideoUploaded}
+      />
+
+      {/* AI Presenter Modal */}
+      <AIPresenterModal
+        isOpen={showPresenterModal}
+        onClose={() => setShowPresenterModal(false)}
+        onContinueToVideo={handlePresenterComplete}
+        video={video}
       />
     </div>
   );
