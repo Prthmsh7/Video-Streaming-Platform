@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, Video, FileText, User, Clock, Eye } from 'lucide-react';
+import { X, Upload, Video, FileText, User, Clock, Eye, Zap, Database, Globe } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { filcdnClient, generateVideoMetadata, createFilecoinDeal } from '../lib/filcdn';
 import AuthModal from './AuthModal';
 
 interface VideoUploadModalProps {
@@ -25,6 +26,9 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [error, setError] = useState('');
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [filecoinCID, setFilecoinCID] = useState('');
+  const [dealInfo, setDealInfo] = useState<any>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const thumbnailInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +81,9 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
     setThumbnailFile(null);
     setUploadProgress(0);
     setError('');
+    setUploadStatus('');
+    setFilecoinCID('');
+    setDealInfo(null);
   };
 
   const handleClose = () => {
@@ -178,30 +185,76 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
         return;
       }
 
+      setUploadStatus('Preparing video for upload...');
       setUploadProgress(20);
 
       // Get video duration
       const duration = await getVideoDuration(selectedFile);
       const formattedDuration = formatDuration(duration);
 
+      setUploadStatus('Uploading to FilCDN (Filecoin network)...');
       setUploadProgress(30);
 
-      // Create a simple video record without file upload for now
-      // This avoids storage bucket issues while testing
+      // Generate metadata for Filecoin storage
+      const videoMetadata = generateVideoMetadata(selectedFile, duration);
+
+      // Upload video to FilCDN
+      const videoUploadResult = await filcdnClient.uploadFile(selectedFile, {
+        filename: `${Date.now()}-${selectedFile.name}`,
+        metadata: {
+          ...videoMetadata,
+          title: title.trim(),
+          channel: channelName.trim(),
+          uploader: user.id,
+        }
+      });
+
+      setFilecoinCID(videoUploadResult.cid);
+      setUploadStatus('Video uploaded to Filecoin! Creating storage deal...');
+      setUploadProgress(60);
+
+      // Create Filecoin deal
+      const deal = await createFilecoinDeal(videoUploadResult.cid, videoMetadata);
+      setDealInfo(deal);
+
+      // Upload thumbnail to FilCDN if provided
+      let thumbnailCID = null;
+      let thumbnailUrl = null;
+      
+      if (thumbnailFile) {
+        setUploadStatus('Uploading thumbnail to FilCDN...');
+        const thumbnailUploadResult = await filcdnClient.uploadFile(thumbnailFile, {
+          filename: `thumbnail-${Date.now()}-${thumbnailFile.name}`,
+          metadata: {
+            type: 'thumbnail',
+            parentCID: videoUploadResult.cid,
+          }
+        });
+        thumbnailCID = thumbnailUploadResult.cid;
+        thumbnailUrl = filcdnClient.getThumbnailUrl(thumbnailCID);
+      }
+
+      setUploadStatus('Saving to database...');
+      setUploadProgress(80);
+
+      // Create video record with FilCDN/Filecoin data
       const videoData = {
         title: title.trim(),
         description: description.trim() || null,
         channel_name: channelName.trim(),
-        thumbnail_url: thumbnailFile ? URL.createObjectURL(thumbnailFile) : 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
-        video_url: selectedFile ? URL.createObjectURL(selectedFile) : null,
+        thumbnail_url: thumbnailUrl || 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
+        video_url: filcdnClient.getStreamingUrl(videoUploadResult.cid),
         duration: formattedDuration,
         user_id: user.id,
         views: 0,
         likes: 0,
-        dislikes: 0
+        dislikes: 0,
+        // Store Filecoin-specific data in a JSON column or separate fields
+        filecoin_cid: videoUploadResult.cid,
+        filecoin_deal_id: deal.dealId,
+        storage_provider: deal.provider,
+        file_size: videoUploadResult.size,
       };
-
-      setUploadProgress(60);
 
       // Insert video record into database
       const { data: insertedVideo, error: insertError } = await supabase
@@ -215,6 +268,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
         throw new Error(`Database error: ${insertError.message}`);
       }
 
+      setUploadStatus('Upload complete! Video stored on Filecoin network.');
       setUploadProgress(100);
 
       // Create video object for the UI
@@ -230,12 +284,18 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
         channelAvatar: 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
         description: insertedVideo.description || '',
         likes: '0',
-        subscribers: '1K'
+        subscribers: '1K',
+        filecoinCID: videoUploadResult.cid,
+        dealInfo: deal,
       };
 
       onVideoUploaded(newVideo);
-      resetForm();
-      onClose();
+      
+      // Keep modal open briefly to show success message
+      setTimeout(() => {
+        resetForm();
+        onClose();
+      }, 3000);
 
     } catch (error) {
       console.error('Upload error:', error);
@@ -248,9 +308,12 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
       }
       
       setError(errorMessage);
+      setUploadStatus('');
     } finally {
       setIsUploading(false);
-      setUploadProgress(0);
+      if (!error) {
+        setUploadProgress(0);
+      }
     }
   };
 
@@ -270,9 +333,12 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
           <div className="flex items-center justify-between p-6 border-b border-dark-border">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center">
-                <Upload size={20} className="text-white" />
+                <Database size={20} className="text-white" />
               </div>
-              <h2 className="text-xl font-bold text-text-primary">Upload Video</h2>
+              <div>
+                <h2 className="text-xl font-bold text-text-primary">Upload to Filecoin</h2>
+                <p className="text-sm text-text-secondary">Decentralized video storage via FilCDN</p>
+              </div>
             </div>
             <button 
               onClick={handleClose}
@@ -284,13 +350,31 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
           </div>
 
           <div className="p-6 space-y-6">
+            {/* Filecoin Info Banner */}
+            <div className="p-4 bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20 rounded-xl">
+              <div className="flex items-center space-x-3 mb-2">
+                <Globe size={20} className="text-primary" />
+                <h3 className="font-semibold text-text-primary">Powered by Filecoin Network</h3>
+              </div>
+              <p className="text-sm text-text-secondary">
+                Your videos are stored on the decentralized Filecoin network, ensuring permanent, 
+                censorship-resistant storage with cryptographic proof of storage.
+              </p>
+              {filecoinCID && (
+                <div className="mt-3 p-2 bg-dark-surface rounded-lg">
+                  <p className="text-xs text-text-muted">Filecoin CID:</p>
+                  <p className="text-sm font-mono text-secondary break-all">{filecoinCID}</p>
+                </div>
+              )}
+            </div>
+
             {/* Authentication Notice */}
             {!isAuthenticated && (
               <div className="p-4 bg-primary/10 border border-primary/20 rounded-xl">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-primary font-semibold">Sign in required</p>
-                    <p className="text-text-secondary text-sm">You need to be signed in to upload videos</p>
+                    <p className="text-text-secondary text-sm">You need to be signed in to upload videos to Filecoin</p>
                   </div>
                   <button
                     onClick={() => setShowAuthModal(true)}
@@ -306,6 +390,21 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
             {error && (
               <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl">
                 <p className="text-red-400 text-sm">{error}</p>
+              </div>
+            )}
+
+            {/* Upload Status */}
+            {uploadStatus && (
+              <div className="p-4 bg-secondary/10 border border-secondary/20 rounded-xl">
+                <div className="flex items-center space-x-3">
+                  <Zap size={16} className="text-secondary animate-pulse" />
+                  <p className="text-secondary text-sm font-medium">{uploadStatus}</p>
+                </div>
+                {dealInfo && (
+                  <div className="mt-2 text-xs text-text-muted">
+                    Deal ID: {dealInfo.dealId} | Provider: {dealInfo.provider} | Price: {dealInfo.price}
+                  </div>
+                )}
               </div>
             )}
 
@@ -338,6 +437,9 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                       <p className="text-sm text-text-secondary">
                         {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
                       </p>
+                      <p className="text-xs text-text-muted mt-1">
+                        Ready for Filecoin storage
+                      </p>
                     </div>
                     <button
                       onClick={() => fileInputRef.current?.click()}
@@ -356,7 +458,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                         Drop your video here
                       </p>
                       <p className="text-text-secondary mb-4">
-                        or click to browse files
+                        Upload to decentralized Filecoin storage
                       </p>
                       <button
                         onClick={() => fileInputRef.current?.click()}
@@ -366,7 +468,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                       </button>
                     </div>
                     <p className="text-xs text-text-muted">
-                      Supported formats: MP4, WebM, AVI, MOV
+                      Supported formats: MP4, WebM, AVI, MOV • Stored permanently on Filecoin
                     </p>
                   </div>
                 )}
@@ -464,7 +566,7 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-text-muted">
-                  Optional: Upload a custom thumbnail image (JPG, PNG, WebP)
+                  Optional: Upload a custom thumbnail (also stored on Filecoin)
                 </p>
                 <input
                   ref={thumbnailInputRef}
@@ -480,12 +582,12 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
             {isUploading && (
               <div className="space-y-3">
                 <div className="flex justify-between text-sm">
-                  <span className="text-text-secondary">Uploading...</span>
+                  <span className="text-text-secondary">Uploading to Filecoin...</span>
                   <span className="text-primary font-medium">{uploadProgress}%</span>
                 </div>
                 <div className="w-full bg-dark-border rounded-full h-2">
                   <div 
-                    className="bg-primary h-2 rounded-full transition-all duration-300"
+                    className="bg-gradient-to-r from-primary to-secondary h-2 rounded-full transition-all duration-300"
                     style={{ width: `${uploadProgress}%` }}
                   ></div>
                 </div>
@@ -504,17 +606,17 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
               <button
                 onClick={handleUpload}
                 disabled={!selectedFile || !title.trim() || !channelName.trim() || isUploading || !isAuthenticated}
-                className="px-8 py-3 bg-primary hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 rounded-xl font-semibold text-white transition-all duration-300 flex items-center space-x-2"
+                className="px-8 py-3 bg-gradient-to-r from-primary to-secondary hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 rounded-xl font-semibold text-white transition-all duration-300 flex items-center space-x-2"
               >
                 {isUploading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                    <span>Uploading...</span>
+                    <span>Uploading to Filecoin...</span>
                   </>
                 ) : (
                   <>
-                    <Upload size={18} />
-                    <span>Upload Video</span>
+                    <Database size={18} />
+                    <span>Upload to Filecoin</span>
                   </>
                 )}
               </button>

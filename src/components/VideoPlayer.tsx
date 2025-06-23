@@ -27,7 +27,11 @@ import {
   Zap,
   Star,
   Award,
-  Sparkles
+  Sparkles,
+  Database,
+  Globe,
+  Shield,
+  Clock
 } from 'lucide-react';
 import { Video } from '../types/Video';
 import VideoUploadModal from './VideoUploadModal';
@@ -66,6 +70,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [isDisliked, setIsDisliked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [showShareMenu, setShowShareMenu] = useState(false);
+  const [showFilecoinInfo, setShowFilecoinInfo] = useState(false);
   
   // Investment states
   const [investmentAmount, setInvestmentAmount] = useState('');
@@ -287,6 +292,14 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               onPause={() => setIsPlaying(false)}
             />
             
+            {/* Filecoin Badge */}
+            {video.filecoinCID && (
+              <div className="absolute top-4 right-4 bg-gradient-to-r from-primary/90 to-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2">
+                <Database size={16} className="text-white" />
+                <span className="text-white text-sm font-medium">Stored on Filecoin</span>
+              </div>
+            )}
+            
             {/* Video Controls Overlay */}
             <div className={`absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent transition-all duration-300 ${
               showControls ? 'opacity-100' : 'opacity-0'
@@ -409,6 +422,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center space-x-4 text-text-secondary">
                 <span className="font-medium">{video.views}</span>
+                {video.filecoinCID && (
+                  <button
+                    onClick={() => setShowFilecoinInfo(!showFilecoinInfo)}
+                    className="flex items-center space-x-2 px-3 py-1 bg-primary/10 rounded-lg text-primary hover:bg-primary/20 transition-all duration-300"
+                  >
+                    <Database size={14} />
+                    <span className="text-sm font-medium">Filecoin</span>
+                  </button>
+                )}
               </div>
               
               <div className="flex items-center space-x-3">
@@ -446,6 +468,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share on Twitter</button>
                       <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share on Facebook</button>
                       <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Embed Video</button>
+                      {video.filecoinCID && (
+                        <button className="w-full text-left px-4 py-2 hover:bg-primary/20 text-sm transition-all duration-300 ripple">Share Filecoin CID</button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -465,6 +490,52 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Filecoin Info Panel */}
+            {showFilecoinInfo && video.filecoinCID && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20 rounded-xl bounce-in">
+                <div className="flex items-center space-x-3 mb-3">
+                  <Globe size={20} className="text-primary" />
+                  <h3 className="font-semibold text-text-primary">Decentralized Storage Details</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-text-muted mb-1">Content Identifier (CID)</p>
+                    <p className="font-mono text-primary break-all">{video.filecoinCID}</p>
+                  </div>
+                  {video.dealInfo && (
+                    <>
+                      <div>
+                        <p className="text-text-muted mb-1">Storage Deal ID</p>
+                        <p className="font-mono text-secondary">{video.dealInfo.dealId}</p>
+                      </div>
+                      <div>
+                        <p className="text-text-muted mb-1">Storage Provider</p>
+                        <p className="font-mono text-text-primary">{video.dealInfo.provider}</p>
+                      </div>
+                      <div>
+                        <p className="text-text-muted mb-1">Deal Price</p>
+                        <p className="font-mono text-accent">{video.dealInfo.price}</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="mt-3 flex items-center space-x-4 text-xs text-text-muted">
+                  <div className="flex items-center space-x-1">
+                    <Shield size={12} />
+                    <span>Cryptographically verified</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Clock size={12} />
+                    <span>Permanent storage</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Globe size={12} />
+                    <span>Decentralized network</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Channel Info */}
@@ -559,7 +630,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="font-semibold text-text-primary">@techexplorer</span>
                     <span className="text-text-muted text-sm">2 hours ago</span>
                   </div>
-                  <p className="text-text-secondary mb-3 leading-relaxed">Great video! The quality is amazing and the content is very informative.</p>
+                  <p className="text-text-secondary mb-3 leading-relaxed">Great video! Love that it's stored on Filecoin - truly decentralized content!</p>
                   <div className="flex items-center space-x-6">
                     <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
                       <ThumbsUp size={16} />
@@ -586,7 +657,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="font-semibold text-text-primary">@developer456</span>
                     <span className="text-text-muted text-sm">5 hours ago</span>
                   </div>
-                  <p className="text-text-secondary mb-3 leading-relaxed">Thanks for sharing! Could you upload more videos like this?</p>
+                  <p className="text-text-secondary mb-3 leading-relaxed">Amazing to see decentralized storage in action! The future of content is here.</p>
                   <div className="flex items-center space-x-6">
                     <button className="flex items-center space-x-2 text-text-muted hover:text-primary transition-all duration-300 scale-hover">
                       <ThumbsUp size={16} />
@@ -613,10 +684,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               <h3 className="font-bold text-lg text-text-primary">Up Next</h3>
               <button 
                 onClick={() => setShowUploadModal(true)}
-                className="flex items-center space-x-2 px-4 py-2 bg-secondary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 text-sm ripple"
+                className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-primary to-secondary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300 text-sm ripple"
               >
-                <Upload size={16} />
-                <span>Upload</span>
+                <Database size={16} />
+                <span>Upload to Filecoin</span>
               </button>
             </div>
             
@@ -637,6 +708,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-2 py-1 rounded font-mono backdrop-blur-sm">
                       {upNextVideo.duration}
                     </div>
+                    {upNextVideo.filecoinCID && (
+                      <div className="absolute top-2 left-2 bg-primary/90 backdrop-blur-sm rounded px-2 py-1">
+                        <Database size={10} className="text-white" />
+                      </div>
+                    )}
                   </div>
                   
                   <div className="flex-1 min-w-0">
@@ -646,6 +722,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       <span>{upNextVideo.views}</span>
                       <span>•</span>
                       <span>{upNextVideo.timestamp}</span>
+                      {upNextVideo.filecoinCID && (
+                        <>
+                          <span>•</span>
+                          <span className="text-primary">Filecoin</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -653,9 +735,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               
               {upNextVideos.length === 0 && (
                 <div className="text-center text-text-muted py-8">
-                  <Upload size={48} className="mx-auto mb-4 opacity-50 float-animation" />
+                  <Database size={48} className="mx-auto mb-4 opacity-50 float-animation" />
                   <p className="font-medium">No more videos in queue</p>
-                  <p className="text-sm mt-2">Upload a video to add it to the queue</p>
+                  <p className="text-sm mt-2">Upload a video to Filecoin to add it to the queue</p>
                 </div>
               )}
             </div>
