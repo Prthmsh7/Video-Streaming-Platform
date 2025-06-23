@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Play, Pause, Volume2, VolumeX, RotateCcw, Sparkles, User, Clock, Eye, Zap } from 'lucide-react';
-import { tavusClient, PresenterPersona, TavusVideoResponse, selectPresenterForContent } from '../lib/tavus';
+import { tavusClient, TavusVideoResponse } from '../lib/tavus';
 import { Video } from '../types/Video';
 
 interface AIPresenterModalProps {
@@ -22,32 +22,21 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [selectedPresenter, setSelectedPresenter] = useState<PresenterPersona | null>(null);
-  const [showPresenterSelection, setShowPresenterSelection] = useState(false);
   const [error, setError] = useState('');
   const [autoPlayCountdown, setAutoPlayCountdown] = useState(0);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const countdownRef = useRef<NodeJS.Timeout>();
 
-  const presenters = tavusClient.getPresenters();
+  const presenter = tavusClient.getPresenter();
   const isTavusEnabled = tavusClient.isEnabled();
-
-  // Auto-select presenter based on content
-  useEffect(() => {
-    if (isOpen && !selectedPresenter) {
-      const recommendedPresenterId = selectPresenterForContent(video.title, video.description || '');
-      const presenter = presenters.find(p => p.id === recommendedPresenterId) || presenters[0];
-      setSelectedPresenter(presenter);
-    }
-  }, [isOpen, video, presenters, selectedPresenter]);
 
   // Generate presenter video when modal opens
   useEffect(() => {
-    if (isOpen && selectedPresenter && !presenterVideo && !isGenerating) {
+    if (isOpen && !presenterVideo && !isGenerating) {
       generatePresenterVideo();
     }
-  }, [isOpen, selectedPresenter]);
+  }, [isOpen]);
 
   // Auto-play countdown after presenter video ends
   useEffect(() => {
@@ -73,8 +62,6 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
   }, [currentTime, duration, isPlaying, presenterVideo, onContinueToVideo]);
 
   const generatePresenterVideo = async () => {
-    if (!selectedPresenter) return;
-
     setIsGenerating(true);
     setError('');
 
@@ -90,7 +77,7 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
         }
       };
 
-      const result = await tavusClient.generatePresenterVideo(request, selectedPresenter.id);
+      const result = await tavusClient.generatePresenterVideo(request);
       setPresenterVideo(result);
       
       // Auto-play when ready
@@ -106,18 +93,6 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
       setError('Failed to generate AI presenter. Please try again.');
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  const handlePresenterChange = (presenter: PresenterPersona) => {
-    setSelectedPresenter(presenter);
-    setPresenterVideo(null);
-    setShowPresenterSelection(false);
-    setCurrentTime(0);
-    setDuration(0);
-    setAutoPlayCountdown(0);
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
     }
   };
 
@@ -191,7 +166,7 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
               <Sparkles size={20} className="text-white" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-text-primary">AI Video Presenter</h2>
+              <h2 className="text-xl font-bold text-text-primary">Meet Sophia - Your AI Video Host</h2>
               <p className="text-sm text-text-secondary">
                 {isTavusEnabled ? 'Powered by Tavus AI' : 'Demo Mode - Enable Tavus for real AI presenters'}
               </p>
@@ -206,40 +181,6 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
         </div>
 
         <div className="p-6">
-          {/* Presenter Selection */}
-          {showPresenterSelection && (
-            <div className="mb-6 p-4 glass rounded-xl border border-primary/10">
-              <h3 className="text-lg font-semibold mb-4 text-text-primary">Choose Your AI Presenter</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {presenters.map((presenter) => (
-                  <div
-                    key={presenter.id}
-                    onClick={() => handlePresenterChange(presenter)}
-                    className={`p-4 rounded-xl cursor-pointer transition-all duration-300 border-2 ${
-                      selectedPresenter?.id === presenter.id
-                        ? 'border-primary bg-primary/10'
-                        : 'border-dark-border hover:border-primary/50 hover:bg-primary/5'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3 mb-3">
-                      <img
-                        src={presenter.avatarUrl}
-                        alt={presenter.name}
-                        className="w-12 h-12 rounded-full object-cover"
-                      />
-                      <div>
-                        <h4 className="font-semibold text-text-primary">{presenter.name}</h4>
-                        <p className="text-xs text-primary capitalize">{presenter.voiceStyle}</p>
-                      </div>
-                    </div>
-                    <p className="text-sm text-text-secondary">{presenter.description}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Main Content */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Video Player */}
             <div className="lg:col-span-2">
@@ -249,7 +190,7 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
                     <div className="text-center">
                       <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
                       <p className="text-white font-medium">
-                        {isTavusEnabled ? 'Generating AI presenter...' : 'Preparing demo presenter...'}
+                        {isTavusEnabled ? 'Sophia is preparing your video introduction...' : 'Preparing demo presenter...'}
                       </p>
                       <p className="text-white/70 text-sm mt-2">This may take a moment</p>
                     </div>
@@ -331,29 +272,21 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
 
             {/* Video Info & Controls */}
             <div className="space-y-6">
-              {/* Current Presenter */}
-              {selectedPresenter && (
-                <div className="glass rounded-xl p-4 border border-primary/10">
-                  <div className="flex items-center space-x-3 mb-3">
-                    <img
-                      src={selectedPresenter.avatarUrl}
-                      alt={selectedPresenter.name}
-                      className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/30"
-                    />
-                    <div>
-                      <h3 className="font-semibold text-text-primary">{selectedPresenter.name}</h3>
-                      <p className="text-sm text-primary capitalize">{selectedPresenter.voiceStyle} Style</p>
-                    </div>
+              {/* AI Presenter Info */}
+              <div className="glass rounded-xl p-4 border border-primary/10">
+                <div className="flex items-center space-x-3 mb-3">
+                  <img
+                    src={presenter.avatarUrl}
+                    alt={presenter.name}
+                    className="w-12 h-12 rounded-full object-cover ring-2 ring-primary/30"
+                  />
+                  <div>
+                    <h3 className="font-semibold text-text-primary">{presenter.name}</h3>
+                    <p className="text-sm text-primary capitalize">{presenter.voiceStyle} AI Host</p>
                   </div>
-                  <p className="text-sm text-text-secondary mb-3">{selectedPresenter.description}</p>
-                  <button
-                    onClick={() => setShowPresenterSelection(!showPresenterSelection)}
-                    className="w-full py-2 glass border border-dark-border rounded-lg hover:border-primary/50 transition-all duration-300 text-sm"
-                  >
-                    Change Presenter
-                  </button>
                 </div>
-              )}
+                <p className="text-sm text-text-secondary">{presenter.description}</p>
+              </div>
 
               {/* Video Being Introduced */}
               <div className="glass rounded-xl p-4 border border-secondary/10">
@@ -382,7 +315,7 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
                 <div className="glass rounded-xl p-4 border border-accent/10">
                   <h3 className="font-semibold text-text-primary mb-3 flex items-center space-x-2">
                     <User size={16} />
-                    <span>Presenter Script</span>
+                    <span>What Sophia Says</span>
                   </h3>
                   <p className="text-sm text-text-secondary leading-relaxed">{presenterVideo.transcript}</p>
                 </div>
@@ -414,7 +347,7 @@ const AIPresenterModal: React.FC<AIPresenterModalProps> = ({
               onClick={onClose}
               className="px-6 py-3 glass hover:bg-primary/20 rounded-xl font-medium transition-all duration-300"
             >
-              Skip Presenter
+              Skip Introduction
             </button>
             <button
               onClick={onContinueToVideo}
