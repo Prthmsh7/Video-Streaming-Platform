@@ -32,7 +32,7 @@ import {
   Globe,
   Shield,
   Clock,
-  RotateCcw
+  Quote
 } from 'lucide-react';
 import { Video } from '../types/Video';
 import VideoUploadModal from './VideoUploadModal';
@@ -102,17 +102,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     { name: 'Executive', min: 10000, max: Infinity, benefits: ['All Partner benefits', 'Revenue sharing', 'Direct collaboration opportunities'], color: 'text-yellow-400', icon: Zap }
   ];
 
-  const presenter = tavusClient.getPresenter();
-  const isTavusEnabled = tavusClient.isEnabled();
-
   // Generate presenter video when video changes
   useEffect(() => {
     setIsShowingPresenter(true);
     setPresenterVideo(null);
     setAutoPlayCountdown(0);
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
     generatePresenterVideo();
   }, [video.id]);
 
@@ -138,37 +132,45 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, [isPlaying]);
 
-  // Handle video end - either presenter or main video
+  // Auto-play countdown after presenter video ends
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
+    if (presenterVideo && !isPlaying && currentTime > 0 && Math.abs(currentTime - duration) < 1 && isShowingPresenter) {
+      // Presenter video ended, start countdown
+      setAutoPlayCountdown(3);
+      countdownRef.current = setInterval(() => {
+        setAutoPlayCountdown(prev => {
+          if (prev <= 1) {
+            handleSkipToMainVideo();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+      }
+    };
+  }, [currentTime, duration, isPlaying, presenterVideo, isShowingPresenter]);
+
+  // Auto-play next video when main video ends
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement || isShowingPresenter) return;
 
     const handleEnded = () => {
-      if (isShowingPresenter) {
-        // Presenter video ended, start countdown to main video
-        setAutoPlayCountdown(3);
-        countdownRef.current = setInterval(() => {
-          setAutoPlayCountdown(prev => {
-            if (prev <= 1) {
-              playMainVideo();
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      } else {
-        // Main video ended, move to next video (which will show presenter first)
-        if (upNextVideos.length > 0) {
-          setTimeout(() => {
-            onNextVideo();
-          }, 2000);
-        }
+      if (upNextVideos.length > 0) {
+        setTimeout(() => {
+          onNextVideo();
+        }, 2000);
       }
     };
 
-    video.addEventListener('ended', handleEnded);
-    return () => video.removeEventListener('ended', handleEnded);
-  }, [isShowingPresenter, upNextVideos.length, onNextVideo]);
+    videoElement.addEventListener('ended', handleEnded);
+    return () => videoElement.removeEventListener('ended', handleEnded);
+  }, [upNextVideos.length, onNextVideo, isShowingPresenter]);
 
   const generatePresenterVideo = async () => {
     setIsGeneratingPresenter(true);
@@ -191,7 +193,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       
       // Auto-play presenter video when ready
       setTimeout(() => {
-        if (videoRef.current && isShowingPresenter) {
+        if (videoRef.current) {
           videoRef.current.play();
           setIsPlaying(true);
         }
@@ -199,53 +201,30 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       
     } catch (error) {
       console.error('Failed to generate presenter video:', error);
-      setPresenterError('Failed to generate AI presenter. Skipping to main video...');
+      setPresenterError('Failed to generate AI presenter. Skipping to main video.');
       // Skip to main video if presenter generation fails
       setTimeout(() => {
-        playMainVideo();
+        handleSkipToMainVideo();
       }, 2000);
     } finally {
       setIsGeneratingPresenter(false);
     }
   };
 
-  const playMainVideo = () => {
+  const handleSkipToMainVideo = () => {
     setIsShowingPresenter(false);
     setAutoPlayCountdown(0);
     if (countdownRef.current) {
       clearInterval(countdownRef.current);
     }
     
-    // Reset video states for main video
-    setCurrentTime(0);
-    setDuration(0);
-    setIsPlaying(false);
-    
-    // Auto-play main video after a brief moment
+    // Reset video player for main video
     setTimeout(() => {
       if (videoRef.current) {
         videoRef.current.play();
         setIsPlaying(true);
       }
     }, 500);
-  };
-
-  const skipToMainVideo = () => {
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
-    playMainVideo();
-  };
-
-  const regeneratePresenter = () => {
-    setPresenterVideo(null);
-    setCurrentTime(0);
-    setDuration(0);
-    setAutoPlayCountdown(0);
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
-    generatePresenterVideo();
   };
 
   const togglePlay = () => {
@@ -387,13 +366,8 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const progressPercentage = (totalInvestment / investmentGoal) * 100;
 
   // Determine current video source and info
-  const currentVideoUrl = isShowingPresenter 
-    ? (presenterVideo?.videoUrl || '') 
-    : (video.videoUrl || video.thumbnail);
-  
-  const currentVideoTitle = isShowingPresenter 
-    ? `Sophia introduces: ${video.title}` 
-    : video.title;
+  const currentVideoSource = isShowingPresenter && presenterVideo ? presenterVideo.videoUrl : (video.videoUrl || video.thumbnail);
+  const currentVideoPoster = isShowingPresenter && presenterVideo ? presenterVideo.thumbnailUrl : video.thumbnail;
 
   return (
     <div className="py-8 fade-in">
@@ -407,66 +381,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onMouseMove={() => setShowControls(true)}
             onMouseLeave={() => isPlaying && setShowControls(false)}
           >
-            {/* AI Presenter Badge */}
-            {isShowingPresenter && (
-              <div className="absolute top-4 left-4 bg-gradient-to-r from-purple-500/90 to-pink-500/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2 z-10">
-                <Sparkles size={16} className="text-white" />
-                <span className="text-white text-sm font-medium">AI Presenter - Sophia</span>
-              </div>
-            )}
-
-            {/* Filecoin Badge */}
-            {!isShowingPresenter && video.filecoinCID && (
-              <div className="absolute top-4 right-4 bg-gradient-to-r from-primary/90 to-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2 z-10">
-                <Database size={16} className="text-white" />
-                <span className="text-white text-sm font-medium">Stored on Filecoin</span>
-              </div>
-            )}
-
-            {/* Loading/Error States */}
-            {isShowingPresenter && isGeneratingPresenter && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black z-20">
-                <div className="text-center">
-                  <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-white font-medium">
-                    {isTavusEnabled ? 'Sophia is preparing your video introduction...' : 'Preparing demo presenter...'}
-                  </p>
-                  <p className="text-white/70 text-sm mt-2">This may take a moment</p>
-                </div>
-              </div>
-            )}
-
-            {isShowingPresenter && presenterError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black z-20">
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <X size={32} className="text-red-400" />
-                  </div>
-                  <p className="text-red-400 font-medium mb-2">Presenter Generation Failed</p>
-                  <p className="text-white/70 text-sm mb-4">{presenterError}</p>
-                  <div className="flex space-x-3">
-                    <button
-                      onClick={regeneratePresenter}
-                      className="px-4 py-2 bg-primary rounded-lg text-white hover:scale-105 transition-all duration-300"
-                    >
-                      Try Again
-                    </button>
-                    <button
-                      onClick={skipToMainVideo}
-                      className="px-4 py-2 bg-secondary rounded-lg text-white hover:scale-105 transition-all duration-300"
-                    >
-                      Skip to Video
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Main Video Element */}
             <video
               ref={videoRef}
-              src={currentVideoUrl}
-              poster={isShowingPresenter ? presenter.avatarUrl : video.thumbnail}
+              src={currentVideoSource}
+              poster={currentVideoPoster}
               className="w-full aspect-video object-cover"
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
@@ -474,21 +392,55 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               onPause={() => setIsPlaying(false)}
             />
             
-            {/* Auto-play Countdown Overlay */}
-            {autoPlayCountdown > 0 && (
-              <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-30">
+            {/* AI Presenter Badge */}
+            {isShowingPresenter && (
+              <div className="absolute top-4 left-4 bg-gradient-to-r from-purple-500/90 to-pink-500/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2">
+                <Sparkles size={16} className="text-white" />
+                <span className="text-white text-sm font-medium">AI Presenter - Sophia</span>
+              </div>
+            )}
+            
+            {/* Filecoin Badge - Only show for main video */}
+            {!isShowingPresenter && video.filecoinCID && (
+              <div className="absolute top-4 right-4 bg-gradient-to-r from-primary/90 to-secondary/90 backdrop-blur-sm rounded-lg px-3 py-2 flex items-center space-x-2">
+                <Database size={16} className="text-white" />
+                <span className="text-white text-sm font-medium">Stored on Filecoin</span>
+              </div>
+            )}
+            
+            {/* Loading State for Presenter Generation */}
+            {isGeneratingPresenter && (
+              <div className="absolute inset-0 bg-black/80 flex items-center justify-center">
                 <div className="text-center">
+                  <div className="w-16 h-16 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-white font-medium">Sophia is preparing your introduction...</p>
+                  <p className="text-white/70 text-sm mt-2">This may take a moment</p>
+                </div>
+              </div>
+            )}
+
+            {/* Error State */}
+            {presenterError && (
+              <div className="absolute top-20 left-4 right-4 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                <p className="text-red-400 text-sm">{presenterError}</p>
+              </div>
+            )}
+
+            {/* Auto-play Countdown */}
+            {autoPlayCountdown > 0 && isShowingPresenter && (
+              <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                <div className="text-center bg-black/80 rounded-2xl p-8">
                   <div className="flex items-center justify-center space-x-2 mb-4">
                     <Zap size={24} className="text-secondary" />
-                    <h3 className="text-xl font-semibold text-white">Starting Main Video</h3>
+                    <h3 className="text-xl font-bold text-white">Starting Video</h3>
                   </div>
                   <div className="text-6xl font-bold text-secondary mb-4">{autoPlayCountdown}</div>
                   <p className="text-white/80 mb-4">Video will start automatically</p>
                   <button
-                    onClick={skipToMainVideo}
-                    className="px-6 py-3 bg-secondary rounded-lg text-white hover:scale-105 transition-all duration-300"
+                    onClick={handleSkipToMainVideo}
+                    className="px-6 py-3 bg-secondary rounded-lg text-white hover:scale-105 transition-all duration-300 font-medium"
                   >
-                    Start Now
+                    Skip to Video
                   </button>
                 </div>
               </div>
@@ -531,17 +483,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                       {isPlaying ? <Pause size={28} /> : <Play size={28} />}
                     </button>
                     
-                    {!isShowingPresenter && (
-                      <>
-                        <button onClick={() => skipTime(-10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
-                          <SkipBack size={24} />
-                        </button>
-                        
-                        <button onClick={() => skipTime(10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
-                          <SkipForward size={24} />
-                        </button>
-                      </>
-                    )}
+                    <button onClick={() => skipTime(-10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                      <SkipBack size={24} />
+                    </button>
+                    
+                    <button onClick={() => skipTime(10)} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
+                      <SkipForward size={24} />
+                    </button>
 
                     <div className="flex items-center space-x-3">
                       <button onClick={toggleMute} className="text-white hover:text-primary transition-all duration-300 scale-hover ripple p-2 rounded-lg">
@@ -564,22 +512,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-4">
-                    {/* Regenerate Presenter Button (only during presenter) */}
-                    {isShowingPresenter && presenterVideo && (
+                    {/* Skip to Video Button - Only show during presenter */}
+                    {isShowingPresenter && !autoPlayCountdown && (
                       <button 
-                        onClick={regeneratePresenter}
-                        className="flex items-center space-x-2 px-3 py-2 bg-purple-500/80 rounded-lg text-white hover:scale-105 transition-all duration-300"
-                      >
-                        <RotateCcw size={16} />
-                        <span className="text-sm">Regenerate</span>
-                      </button>
-                    )}
-
-                    {/* Skip to Main Video Button (only during presenter) */}
-                    {isShowingPresenter && (
-                      <button 
-                        onClick={skipToMainVideo}
-                        className="flex items-center space-x-2 px-3 py-2 bg-secondary/80 rounded-lg text-white hover:scale-105 transition-all duration-300"
+                        onClick={handleSkipToMainVideo}
+                        className="flex items-center space-x-2 px-3 py-2 bg-secondary rounded-lg text-white hover:scale-105 transition-all duration-300"
                       >
                         <SkipForward size={16} />
                         <span className="text-sm">Skip to Video</span>
@@ -637,7 +574,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
           {/* Video Info */}
           <div className="mb-6 slide-in-left">
-            <h1 className="text-2xl font-bold mb-4 text-text-primary">{currentVideoTitle}</h1>
+            <h1 className="text-2xl font-bold mb-4 text-text-primary">{video.title}</h1>
             
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center space-x-4 text-text-secondary">
@@ -651,14 +588,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     <span className="text-sm font-medium">Filecoin</span>
                   </button>
                 )}
-                {isShowingPresenter && (
-                  <div className="flex items-center space-x-2 px-3 py-1 bg-purple-500/10 rounded-lg text-purple-400">
-                    <Sparkles size={14} />
-                    <span className="text-sm font-medium">AI Introduction</span>
-                  </div>
-                )}
               </div>
               
+              {/* Only show interaction buttons for main video */}
               {!isShowingPresenter && (
                 <div className="flex items-center space-x-3">
                   <button 
@@ -719,25 +651,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               )}
             </div>
 
-            {/* Presenter Transcript */}
-            {isShowingPresenter && presenterVideo?.transcript && (
-              <div className="mt-4 p-4 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20 rounded-xl bounce-in">
-                <div className="flex items-center space-x-3 mb-3">
-                  <img
-                    src={presenter.avatarUrl}
-                    alt={presenter.name}
-                    className="w-10 h-10 rounded-full object-cover ring-2 ring-purple-400/30"
-                  />
-                  <div>
-                    <h3 className="font-semibold text-text-primary">{presenter.name} says:</h3>
-                    <p className="text-xs text-purple-400">AI Video Host</p>
-                  </div>
-                </div>
-                <p className="text-sm text-text-secondary leading-relaxed italic">"{presenterVideo.transcript}"</p>
-              </div>
-            )}
-
-            {/* Filecoin Info Panel */}
+            {/* Filecoin Info Panel - Only for main video */}
             {!isShowingPresenter && showFilecoinInfo && video.filecoinCID && (
               <div className="mt-4 p-4 bg-gradient-to-r from-primary/10 to-secondary/10 border border-primary/20 rounded-xl bounce-in">
                 <div className="flex items-center space-x-3 mb-3">
@@ -783,6 +697,17 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
               </div>
             )}
           </div>
+
+          {/* Presenter Transcript - Only show during presenter video */}
+          {isShowingPresenter && presenterVideo?.transcript && (
+            <div className="glass rounded-2xl p-6 mb-6 border border-purple-500/20 slide-in-right">
+              <div className="flex items-center space-x-3 mb-4">
+                <Quote size={20} className="text-purple-400" />
+                <h3 className="font-semibold text-text-primary">Sophia's Introduction</h3>
+              </div>
+              <p className="text-text-secondary leading-relaxed italic">"{presenterVideo.transcript}"</p>
+            </div>
+          )}
 
           {/* Channel Info - Only show for main video */}
           {!isShowingPresenter && (
