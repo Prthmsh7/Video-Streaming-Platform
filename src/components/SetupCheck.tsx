@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { CheckCircle, XCircle, AlertCircle, Database, Key, Upload, Users } from 'lucide-react'
+import { CheckCircle, XCircle, AlertCircle, Database, Key, Upload, Users, RefreshCw } from 'lucide-react'
 import { supabase, testConnection } from '../lib/supabase'
 
 const SetupCheck: React.FC = () => {
@@ -12,12 +12,14 @@ const SetupCheck: React.FC = () => {
   })
   const [loading, setLoading] = useState(true)
   const [details, setDetails] = useState<string[]>([])
+  const [retrying, setRetrying] = useState(false)
 
   useEffect(() => {
     runSetupChecks()
   }, [])
 
   const runSetupChecks = async () => {
+    setRetrying(true)
     const newChecks = { ...checks }
     const newDetails: string[] = []
 
@@ -25,14 +27,15 @@ const SetupCheck: React.FC = () => {
     const hasEnvVars = !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY)
     newChecks.envVars = hasEnvVars
     if (!hasEnvVars) {
-      newDetails.push('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY')
+      newDetails.push('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in environment variables')
+      newDetails.push('Click "Connect to Supabase" button in the top right corner')
     }
 
     // Check connection
     if (hasEnvVars) {
       newChecks.connection = await testConnection()
       if (!newChecks.connection) {
-        newDetails.push('Cannot connect to Supabase - check your credentials')
+        newDetails.push('Cannot connect to Supabase - check your project URL and API key')
       }
     }
 
@@ -42,11 +45,12 @@ const SetupCheck: React.FC = () => {
         const { error } = await supabase.from('videos').select('count').limit(1)
         newChecks.tables = !error
         if (error) {
-          newDetails.push('Database tables not found - run the migration SQL')
+          newDetails.push('Database tables not found - run the migration SQL in Supabase dashboard')
+          newDetails.push('Go to SQL Editor and run the migration files')
         }
       } catch (error) {
         newChecks.tables = false
-        newDetails.push('Database schema not set up')
+        newDetails.push('Database schema not set up properly')
       }
     }
 
@@ -58,11 +62,11 @@ const SetupCheck: React.FC = () => {
         const hasThumbnails = buckets?.some(b => b.name === 'thumbnails')
         newChecks.storage = !!(hasVideos && hasThumbnails)
         if (!newChecks.storage) {
-          newDetails.push('Storage buckets not configured - create videos and thumbnails buckets')
+          newDetails.push('Storage buckets missing - create "videos" and "thumbnails" buckets in Supabase Storage')
         }
       } catch (error) {
         newChecks.storage = false
-        newDetails.push('Storage not accessible')
+        newDetails.push('Storage not accessible - check storage permissions')
       }
     }
 
@@ -80,6 +84,7 @@ const SetupCheck: React.FC = () => {
     setChecks(newChecks)
     setDetails(newDetails)
     setLoading(false)
+    setRetrying(false)
   }
 
   const CheckItem: React.FC<{ 
@@ -107,8 +112,9 @@ const SetupCheck: React.FC = () => {
   )
 
   const allChecksPass = Object.values(checks).every(Boolean)
+  const hasEnvVars = checks.envVars
 
-  if (loading) {
+  if (loading && !retrying) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center">
         <div className="text-center">
@@ -121,10 +127,6 @@ const SetupCheck: React.FC = () => {
     )
   }
 
-  if (allChecksPass) {
-    return null // Don't show setup check if everything is working
-  }
-
   return (
     <div className="min-h-screen bg-dark-bg p-6">
       <div className="max-w-4xl mx-auto">
@@ -132,11 +134,32 @@ const SetupCheck: React.FC = () => {
           <div className="w-20 h-20 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-6">
             <AlertCircle size={32} className="text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-text-primary mb-4">Setup Required</h1>
+          <h1 className="text-3xl font-bold text-text-primary mb-4">
+            {hasEnvVars ? 'Setup In Progress' : 'Supabase Setup Required'}
+          </h1>
           <p className="text-text-secondary text-lg">
-            Your Supabase integration needs to be configured before you can use the platform.
+            {hasEnvVars 
+              ? 'Your Supabase connection is configured, but some setup steps are still needed.'
+              : 'Connect your Supabase project to get started with the video platform.'
+            }
           </p>
         </div>
+
+        {!hasEnvVars && (
+          <div className="glass rounded-2xl p-8 border border-primary/20 mb-8 text-center">
+            <h2 className="text-xl font-bold text-text-primary mb-4">Quick Setup</h2>
+            <p className="text-text-secondary mb-6">
+              Click the "Connect to Supabase" button in the top right corner to automatically configure your environment variables.
+            </p>
+            <div className="bg-dark-surface rounded-xl p-4 text-left">
+              <p className="text-text-muted text-sm mb-2">Or manually add to your .env file:</p>
+              <code className="text-primary text-sm">
+                VITE_SUPABASE_URL=your_project_url<br/>
+                VITE_SUPABASE_ANON_KEY=your_anon_key
+              </code>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-6 mb-8">
           <CheckItem
@@ -179,12 +202,12 @@ const SetupCheck: React.FC = () => {
           <div className="glass rounded-2xl p-6 border border-red-400/20 mb-8">
             <h3 className="font-semibold text-red-400 mb-4 flex items-center space-x-2">
               <AlertCircle size={20} />
-              <span>Issues Found:</span>
+              <span>Setup Steps Needed:</span>
             </h3>
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {details.map((detail, index) => (
                 <li key={index} className="text-text-secondary text-sm flex items-start space-x-2">
-                  <span className="text-red-400 mt-1">•</span>
+                  <span className="text-red-400 mt-1 font-bold">•</span>
                   <span>{detail}</span>
                 </li>
               ))}
@@ -192,21 +215,47 @@ const SetupCheck: React.FC = () => {
           </div>
         )}
 
-        <div className="text-center">
+        <div className="text-center space-x-4">
           <button
             onClick={runSetupChecks}
-            className="px-8 py-3 bg-primary rounded-xl text-white font-semibold hover:scale-105 transition-all duration-300 mr-4"
+            disabled={retrying}
+            className="px-8 py-3 bg-primary rounded-xl text-white font-semibold hover:scale-105 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Recheck Setup
+            {retrying ? (
+              <span className="flex items-center space-x-2">
+                <RefreshCw size={18} className="animate-spin" />
+                <span>Checking...</span>
+              </span>
+            ) : (
+              'Recheck Setup'
+            )}
           </button>
-          <a
-            href="/SETUP_GUIDE.md"
-            target="_blank"
-            className="px-8 py-3 glass rounded-xl text-text-primary font-semibold hover:bg-primary/20 transition-all duration-300 inline-block"
-          >
-            View Setup Guide
-          </a>
+          
+          {hasEnvVars && (
+            <button
+              onClick={() => window.location.reload()}
+              className="px-8 py-3 glass rounded-xl text-text-primary font-semibold hover:bg-primary/20 transition-all duration-300"
+            >
+              Refresh App
+            </button>
+          )}
         </div>
+
+        {hasEnvVars && (
+          <div className="mt-8 text-center">
+            <p className="text-text-muted text-sm">
+              Need help with setup? Check the{' '}
+              <a 
+                href="https://supabase.com/docs" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:text-primary-light"
+              >
+                Supabase documentation
+              </a>
+            </p>
+          </div>
+        )}
       </div>
     </div>
   )

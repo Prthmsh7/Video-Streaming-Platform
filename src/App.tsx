@@ -14,6 +14,7 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [setupComplete, setSetupComplete] = useState(false);
+  const [setupError, setSetupError] = useState<string | null>(null);
 
   const { user, loading: authLoading, signOut } = useAuth();
 
@@ -23,16 +24,24 @@ function App() {
       try {
         const hasEnvVars = !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
         if (!hasEnvVars) {
+          setSetupError('Environment variables not configured');
           setSetupComplete(false);
           setLoading(false);
           return;
         }
 
-        // Test basic connection
+        // Test basic connection and schema
         const { error } = await supabase.from('videos').select('count').limit(1);
-        setSetupComplete(!error);
-      } catch (error) {
+        if (error) {
+          setSetupError(`Database error: ${error.message}`);
+          setSetupComplete(false);
+        } else {
+          setSetupComplete(true);
+          setSetupError(null);
+        }
+      } catch (error: any) {
         console.error('Setup check failed:', error);
+        setSetupError(`Setup check failed: ${error.message}`);
         setSetupComplete(false);
       } finally {
         setLoading(false);
@@ -47,7 +56,8 @@ function App() {
     if (!setupComplete) return;
 
     try {
-      const { data, error } = await supabase
+      // First try the complex query with profile join
+      let { data, error } = await supabase
         .from('videos')
         .select(`
           *,
@@ -59,41 +69,73 @@ function App() {
         `)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      // If the profile join fails, try without it
+      if (error && error.message.includes('relationship')) {
+        console.warn('Profile relationship not found, loading videos without profile data');
+        const { data: simpleData, error: simpleError } = await supabase
+          .from('videos')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (simpleError) throw simpleError;
+        data = simpleData;
+      } else if (error) {
+        throw error;
+      }
 
-      const formattedVideos: Video[] = data.map((video: any) => ({
-        id: video.id,
-        title: video.title,
-        channel: video.channel_name,
-        views: `${video.views.toLocaleString()} views`,
-        timestamp: new Date(video.created_at).toLocaleDateString(),
-        duration: video.duration,
-        thumbnail: video.thumbnail_url || 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
-        videoUrl: video.video_url,
-        channelAvatar: video.profiles?.avatar_url || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-        description: video.description || 'No description available.',
-        likes: video.likes.toString(),
-        subscribers: `${video.profiles?.subscribers_count || 0}K`
-      }));
+      if (data && data.length > 0) {
+        const formattedVideos: Video[] = data.map((video: any) => ({
+          id: video.id,
+          title: video.title,
+          channel: video.channel_name,
+          views: `${video.views.toLocaleString()} views`,
+          timestamp: new Date(video.created_at).toLocaleDateString(),
+          duration: video.duration,
+          thumbnail: video.thumbnail_url || 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
+          videoUrl: video.video_url,
+          channelAvatar: video.profiles?.avatar_url || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
+          description: video.description || 'No description available.',
+          likes: video.likes.toString(),
+          subscribers: `${video.profiles?.subscribers_count || 0}K`
+        }));
 
-      setVideos(formattedVideos);
-    } catch (error) {
+        setVideos(formattedVideos);
+      } else {
+        // No videos in database, show sample data
+        setVideos([
+          {
+            id: 'sample-1',
+            title: 'Welcome to Sillycon - Your Video Platform',
+            channel: 'Sillycon Official',
+            views: '1.2K views',
+            timestamp: 'Just now',
+            duration: '2:30',
+            thumbnail: 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
+            videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+            channelAvatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
+            description: 'Welcome to Sillycon! This is a sample video to get you started. Upload your own videos to see them here.',
+            likes: '42',
+            subscribers: '1K'
+          }
+        ]);
+      }
+    } catch (error: any) {
       console.error('Error loading videos:', error);
-      // Fallback to sample data if database is empty or there's an error
+      // Show sample data as fallback
       setVideos([
         {
-          id: '1',
-          title: 'Building a Modern React Application with TypeScript',
-          channel: 'Tech Tutorials',
-          views: '1.2M views',
-          timestamp: '2 days ago',
-          duration: '15:42',
+          id: 'sample-1',
+          title: 'Welcome to Sillycon - Your Video Platform',
+          channel: 'Sillycon Official',
+          views: '1.2K views',
+          timestamp: 'Just now',
+          duration: '2:30',
           thumbnail: 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
           videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
           channelAvatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-          description: 'Learn how to build a modern React application using TypeScript, including best practices and advanced patterns.',
-          likes: '45K',
-          subscribers: '892K'
+          description: 'Welcome to Sillycon! This is a sample video to get you started. Upload your own videos to see them here.',
+          likes: '42',
+          subscribers: '1K'
         }
       ]);
     }
@@ -137,6 +179,9 @@ function App() {
             <span className="text-white font-bold text-2xl">S</span>
           </div>
           <p className="text-text-secondary">Loading...</p>
+          {setupError && (
+            <p className="text-red-400 text-sm mt-2">{setupError}</p>
+          )}
         </div>
       </div>
     );
@@ -192,6 +237,7 @@ function App() {
         </div>
       </header>
 
+      {/* Main Content - Always show if we have videos */}
       {currentVideo && (
         <VideoPlayer 
           video={currentVideo}
@@ -201,6 +247,27 @@ function App() {
           onVideoSelect={handleVideoSelect}
           currentVideoIndex={currentVideoIndex}
         />
+      )}
+
+      {/* Show message if no videos and user is signed in */}
+      {!currentVideo && user && setupComplete && (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="text-center">
+            <div className="w-20 h-20 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <User size={32} className="text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-text-primary mb-4">Welcome to Sillycon!</h2>
+            <p className="text-text-secondary mb-6">
+              You're signed in and ready to go. Upload your first video to get started!
+            </p>
+            <button
+              onClick={() => setShowAuthModal(false)}
+              className="px-8 py-3 bg-secondary rounded-xl text-white font-semibold hover:scale-105 transition-all duration-300"
+            >
+              Start Exploring
+            </button>
+          </div>
+        </div>
       )}
 
       <AuthModal 
