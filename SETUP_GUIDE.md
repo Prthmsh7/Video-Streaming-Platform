@@ -31,12 +31,14 @@ VITE_SUPABASE_ANON_KEY=your_anon_key_here
 ```
 
 ### 4. Set Up Database Schema
-The migration file is already created. In Supabase dashboard:
+The migration files are already created. In Supabase dashboard:
 1. Go to **SQL Editor**
 2. Click "New query"
 3. Copy the content from `supabase/migrations/20250623090112_wild_pebble.sql`
 4. Paste and click "Run"
-5. Verify tables are created in **Table Editor**
+5. Copy the content from `supabase/migrations/add_videos_profiles_relationship.sql`
+6. Paste and click "Run"
+7. Verify tables are created in **Table Editor**
 
 ### 5. Configure Storage Buckets
 1. Go to **Storage** in Supabase dashboard
@@ -115,6 +117,11 @@ FOR UPDATE USING (bucket_id = 'thumbnails' AND auth.uid()::text = (storage.folde
 - Check table permissions in Table Editor
 - Ensure RLS is enabled on all tables
 
+**Video-Profile Relationship Errors:**
+- Ensure both migration files have been run
+- Verify foreign key constraint exists between videos.user_id and profiles.id
+- Check that profiles are created for all users
+
 ## 📊 Verify Setup
 
 ### Check These in Supabase Dashboard:
@@ -126,6 +133,11 @@ FOR UPDATE USING (bucket_id = 'thumbnails' AND auth.uid()::text = (storage.folde
 - ✅ video_likes
 - ✅ investments
 - ✅ subscriptions
+
+**Foreign Key Relationships:**
+- ✅ videos.user_id → users.id
+- ✅ videos.user_id → profiles.id (added by migration)
+- ✅ profiles.id → users.id
 
 **Storage Buckets:**
 - ✅ videos (public)
@@ -151,5 +163,6 @@ If you encounter issues:
 2. Verify Supabase dashboard for data
 3. Check network tab for failed requests
 4. Ensure all environment variables are set
+5. Verify all migration files have been executed
 
 Your video streaming platform will be fully functional once this setup is complete!
