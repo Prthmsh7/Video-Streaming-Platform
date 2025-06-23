@@ -1,68 +1,90 @@
 import React, { useState, useEffect } from 'react';
+import { User } from 'lucide-react';
 import VideoPlayer from './components/VideoPlayer';
+import AuthModal from './components/AuthModal';
 import { Video } from './types/Video';
+import { useAuth } from './hooks/useAuth';
+import { supabase } from './lib/supabase';
 
 function App() {
-  // Initial video queue with sample videos
-  const [videoQueue, setVideoQueue] = useState<Video[]>([
-    {
-      id: '1',
-      title: 'Building a Modern React Application with TypeScript',
-      channel: 'Tech Tutorials',
-      views: '1.2M views',
-      timestamp: '2 days ago',
-      duration: '15:42',
-      thumbnail: 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-      channelAvatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-      description: 'Learn how to build a modern React application using TypeScript, including best practices and advanced patterns. In this comprehensive tutorial, we\'ll cover component architecture, state management, type safety, and performance optimization techniques that will help you build scalable and maintainable applications.',
-      likes: '45K',
-      subscribers: '892K'
-    },
-    {
-      id: '2',
-      title: 'Advanced React Patterns You Should Know',
-      channel: 'Code Academy',
-      views: '856K views',
-      timestamp: '1 day ago',
-      duration: '12:34',
-      thumbnail: 'https://images.pexels.com/photos/11035471/pexels-photo-11035471.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-      channelAvatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-      description: 'Dive deep into advanced React patterns including render props, higher-order components, compound components, and custom hooks. These patterns will help you write more reusable and maintainable React code.',
-      likes: '32K',
-      subscribers: '654K'
-    },
-    {
-      id: '3',
-      title: 'Beautiful Sunset Timelapse',
-      channel: 'Nature Shots',
-      views: '2.3M views',
-      timestamp: '3 days ago',
-      duration: '8:15',
-      thumbnail: 'https://images.pexels.com/photos/1431822/pexels-photo-1431822.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-      channelAvatar: 'https://images.pexels.com/photos/415829/pexels-photo-415829.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
-      description: 'Experience the breathtaking beauty of nature with this stunning sunset timelapse. Shot over 3 hours and compressed into 8 minutes of pure visual poetry.',
-      likes: '89K',
-      subscribers: '1.2M'
-    }
-  ]);
-
+  const [videos, setVideos] = useState<Video[]>([]);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Page load animation
+  const { user, loading: authLoading, signOut } = useAuth();
+
+  // Load videos from Supabase
+  const loadVideos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('videos')
+        .select(`
+          *,
+          profiles:user_id (
+            username,
+            avatar_url,
+            subscribers_count
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const formattedVideos: Video[] = data.map((video: any) => ({
+        id: video.id,
+        title: video.title,
+        channel: video.channel_name,
+        views: `${video.views.toLocaleString()} views`,
+        timestamp: new Date(video.created_at).toLocaleDateString(),
+        duration: video.duration,
+        thumbnail: video.thumbnail_url || 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
+        videoUrl: video.video_url,
+        channelAvatar: video.profiles?.avatar_url || 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
+        description: video.description || 'No description available.',
+        likes: video.likes.toString(),
+        subscribers: `${video.profiles?.subscribers_count || 0}K`
+      }));
+
+      setVideos(formattedVideos);
+    } catch (error) {
+      console.error('Error loading videos:', error);
+      // Fallback to sample data if database is empty or there's an error
+      setVideos([
+        {
+          id: '1',
+          title: 'Building a Modern React Application with TypeScript',
+          channel: 'Tech Tutorials',
+          views: '1.2M views',
+          timestamp: '2 days ago',
+          duration: '15:42',
+          thumbnail: 'https://images.pexels.com/photos/11035380/pexels-photo-11035380.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2',
+          videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+          channelAvatar: 'https://images.pexels.com/photos/220453/pexels-photo-220453.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2',
+          description: 'Learn how to build a modern React application using TypeScript, including best practices and advanced patterns.',
+          likes: '45K',
+          subscribers: '892K'
+        }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setIsLoaded(true);
-  }, []);
+    if (!authLoading) {
+      loadVideos();
+      setIsLoaded(true);
+    }
+  }, [authLoading]);
 
-  const handleVideoUpload = (uploadedVideo: Video) => {
-    setVideoQueue(prevQueue => [...prevQueue, uploadedVideo]);
+  const handleVideoUpload = () => {
+    loadVideos(); // Reload videos after upload
   };
 
   const handleNextVideo = () => {
-    if (currentVideoIndex < videoQueue.length - 1) {
+    if (currentVideoIndex < videos.length - 1) {
       setCurrentVideoIndex(currentVideoIndex + 1);
     }
   };
@@ -71,21 +93,69 @@ function App() {
     setCurrentVideoIndex(videoIndex);
   };
 
-  const currentVideo = videoQueue[currentVideoIndex];
-  const upNextVideos = videoQueue.slice(currentVideoIndex + 1);
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
+  if (authLoading || loading) {
+    return (
+      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-4 pulse-glow">
+            <span className="text-white font-bold text-2xl">S</span>
+          </div>
+          <p className="text-text-secondary">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const currentVideo = videos[currentVideoIndex];
+  const upNextVideos = videos.slice(currentVideoIndex + 1);
 
   return (
     <div className={`min-h-screen bg-dark-bg text-text-primary transition-all duration-1000 ${isLoaded ? 'fade-in' : 'opacity-0'}`}>
       {/* Header */}
       <header className="glass border-b border-dark-border sticky top-0 z-50 slide-in-left">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center pulse-glow morph-shape">
-              <span className="text-white font-bold text-lg">S</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center pulse-glow">
+                <span className="text-white font-bold text-lg">S</span>
+              </div>
+              <h1 className="text-2xl font-bold text-primary">Sillycon</h1>
             </div>
-            <h1 className="text-2xl font-bold text-primary">
-              Sillycon
-            </h1>
+
+            <div className="flex items-center space-x-4">
+              {user ? (
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center space-x-3">
+                    <img
+                      src={user.user_metadata?.avatar_url || 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=40&h=40&dpr=2'}
+                      alt="Profile"
+                      className="w-8 h-8 rounded-full ring-2 ring-primary/30"
+                    />
+                    <span className="text-text-primary font-medium">
+                      {user.user_metadata?.username || user.email}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleSignOut}
+                    className="px-4 py-2 glass hover:bg-primary/20 rounded-xl text-text-primary transition-all duration-300"
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAuthModal(true)}
+                  className="flex items-center space-x-2 px-6 py-3 bg-primary rounded-xl text-white font-medium hover:scale-105 transition-all duration-300"
+                >
+                  <User size={18} />
+                  <span>Sign In</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -100,6 +170,11 @@ function App() {
           currentVideoIndex={currentVideoIndex}
         />
       )}
+
+      <AuthModal 
+        isOpen={showAuthModal} 
+        onClose={() => setShowAuthModal(false)} 
+      />
     </div>
   );
 }
