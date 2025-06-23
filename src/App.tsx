@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from 'lucide-react';
 import VideoPlayer from './components/VideoPlayer';
 import AuthModal from './components/AuthModal';
+import SetupCheck from './components/SetupCheck';
 import { Video } from './types/Video';
 import { useAuth } from './hooks/useAuth';
 import { supabase } from './lib/supabase';
@@ -12,11 +13,39 @@ function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [setupComplete, setSetupComplete] = useState(false);
 
   const { user, loading: authLoading, signOut } = useAuth();
 
+  // Check if setup is complete
+  useEffect(() => {
+    const checkSetup = async () => {
+      try {
+        const hasEnvVars = !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+        if (!hasEnvVars) {
+          setSetupComplete(false);
+          setLoading(false);
+          return;
+        }
+
+        // Test basic connection
+        const { error } = await supabase.from('videos').select('count').limit(1);
+        setSetupComplete(!error);
+      } catch (error) {
+        console.error('Setup check failed:', error);
+        setSetupComplete(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkSetup();
+  }, []);
+
   // Load videos from Supabase
   const loadVideos = async () => {
+    if (!setupComplete) return;
+
     try {
       const { data, error } = await supabase
         .from('videos')
@@ -67,17 +96,15 @@ function App() {
           subscribers: '892K'
         }
       ]);
-    } finally {
-      setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (!authLoading) {
+    if (!authLoading && setupComplete) {
       loadVideos();
       setIsLoaded(true);
     }
-  }, [authLoading]);
+  }, [authLoading, setupComplete]);
 
   const handleVideoUpload = () => {
     loadVideos(); // Reload videos after upload
@@ -96,6 +123,11 @@ function App() {
   const handleSignOut = async () => {
     await signOut();
   };
+
+  // Show setup check if not complete
+  if (!loading && !setupComplete) {
+    return <SetupCheck />;
+  }
 
   if (authLoading || loading) {
     return (
