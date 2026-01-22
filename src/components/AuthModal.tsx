@@ -58,19 +58,35 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess })
         });
 
         // Create profile in Firestore
-        await setDoc(doc(db, 'users', user.uid), {
-          username: username.trim(),
-          full_name: fullName.trim(),
-          email: email.trim(),
-          subscribers_count: 0,
-          created_at: new Date().toISOString()
-        });
+        try {
+          await setDoc(doc(db, 'users', user.uid), {
+            username: username.trim(),
+            full_name: fullName.trim(),
+            email: email.trim(),
+            avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`, // Generate default avatar
+            subscribers_count: 0,
+            created_at: new Date().toISOString()
+          });
+        } catch (profileError) {
+          console.error("Profile creation in Firestore failed:", profileError);
+          // We don't throw here to allow the auth success flow to complete
+          // The user exists in Auth, just missing Firestore profile (can be created later or handled graciously)
+        }
 
         onAuthSuccess();
         handleClose();
       }
     } catch (error: any) {
       console.error('Auth error:', error);
+
+      // Check if user was actually created/signed in despite the error (partial success)
+      if (auth.currentUser) {
+        console.log("User created but profile setup might have failed. Closing modal.");
+        onAuthSuccess();
+        handleClose();
+        return;
+      }
+
       let errorMessage = 'Authentication failed';
       if (error.code === 'auth/email-already-in-use') {
         errorMessage = 'Email is already in use';

@@ -2,6 +2,8 @@ import React, { useState, useRef } from 'react';
 import { X, Upload, Video, FileText, User, Clock, Eye, Zap, Database, Globe, AlertTriangle } from 'lucide-react';
 import { auth, db } from '../lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../lib/firebase';
 import AuthModal from './AuthModal';
 
 interface VideoUploadModalProps {
@@ -169,15 +171,33 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
       setUploadStatus('Processing video...');
       setUploadProgress(40);
 
-      // Simulate upload delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setUploadProgress(70);
+      // Upload to Firebase Storage
+      let videoUrl = '';
+      let thumbnailUrl = 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2';
+
+      try {
+        // Upload Video
+        setUploadStatus('Uploading video to storage...');
+        const videoRef = ref(storage, `videos/${user.uid}/${Date.now()}_${selectedFile.name}`);
+        const videoSnapshot = await uploadBytes(videoRef, selectedFile);
+        videoUrl = await getDownloadURL(videoSnapshot.ref);
+        setUploadProgress(70);
+
+        // Upload Thumbnail (if exists)
+        if (thumbnailFile) {
+          setUploadStatus('Uploading thumbnail...');
+          const thumbRef = ref(storage, `thumbnails/${user.uid}/${Date.now()}_${thumbnailFile.name}`);
+          const thumbSnapshot = await uploadBytes(thumbRef, thumbnailFile);
+          thumbnailUrl = await getDownloadURL(thumbSnapshot.ref);
+        }
+      } catch (uploadError: any) {
+        console.error("Storage upload error:", uploadError);
+        // Fallback for demo purposes if storage fails (e.g. CORS or Rules issues)
+        // But we should try to be real. If it fails, we throw.
+        throw new Error(`Storage upload failed: ${uploadError.message}`);
+      }
 
       setUploadStatus('Saving to database...');
-
-      // Mock video URL for now (in real app, use Firebase Storage)
-      const videoUrl = URL.createObjectURL(selectedFile);
-      const thumbnailUrl = thumbnailFile ? URL.createObjectURL(thumbnailFile) : 'https://images.pexels.com/photos/1040880/pexels-photo-1040880.jpeg?auto=compress&cs=tinysrgb&w=1280&h=720&dpr=2';
 
       // Create video record
       const videoData = {
@@ -327,10 +347,10 @@ const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
 
               <div
                 className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ${dragActive
-                    ? 'border-primary bg-primary/10'
-                    : selectedFile
-                      ? 'border-secondary bg-secondary/10'
-                      : 'border-dark-border hover:border-primary/50 hover:bg-primary/5'
+                  ? 'border-primary bg-primary/10'
+                  : selectedFile
+                    ? 'border-secondary bg-secondary/10'
+                    : 'border-dark-border hover:border-primary/50 hover:bg-primary/5'
                   }`}
                 onDragEnter={handleDrag}
                 onDragLeave={handleDrag}

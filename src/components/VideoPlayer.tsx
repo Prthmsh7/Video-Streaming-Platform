@@ -43,7 +43,7 @@ interface VideoPlayerProps {
   upNextVideos: Video[];
   onVideoUpload: (video: Video) => void;
   onNextVideo: () => void;
-  onVideoSelect: (index: number) => void;
+  onVideoSelect: (videoId: string) => void;
   currentVideoIndex: number;
 }
 
@@ -662,7 +662,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 <div
                   key={upNextVideo.id}
                   className="flex space-x-3 cursor-pointer hover:bg-primary/10 p-3 rounded-xl transition-all duration-300 card-hover stagger-item"
-                  onClick={() => onVideoSelect(currentVideoIndex + index + 1)}
+                  onClick={() => onVideoSelect(upNextVideo.id)}
                 >
                   <div className="relative flex-shrink-0">
                     <img

@@ -1,10 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import VideoPlayer from './components/VideoPlayer';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import HomePage from './pages/HomePage';
+import WatchPage from './pages/WatchPage';
+import SearchResultsPage from './pages/SearchResultsPage';
+import ChannelPage from './pages/ChannelPage';
+import StudioPage from './pages/StudioPage';
+import SearchBar from './components/SearchBar';
 import AuthModal from './components/AuthModal';
 import { Video } from './types/Video';
 import { auth } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { User, LogOut } from 'lucide-react';
+import { User, LogOut, Upload, LayoutDashboard } from 'lucide-react';
+import VideoUploadModal from './components/VideoUploadModal';
 
 function App() {
   // Initial video queue with sample videos
@@ -53,10 +60,11 @@ function App() {
     }
   ]);
 
-  const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const navigate = useNavigate();
 
   // Page load animation
   useEffect(() => {
@@ -69,7 +77,6 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
     });
-
     return () => unsubscribe();
   }, []);
 
@@ -80,54 +87,65 @@ function App() {
   const handleSignOut = async () => {
     await signOut(auth);
     setUser(null);
+    navigate('/');
   };
 
   const handleVideoUpload = (uploadedVideo: Video) => {
     setVideoQueue(prevQueue => [...prevQueue, uploadedVideo]);
   };
 
-  const handleNextVideo = () => {
-    if (currentVideoIndex < videoQueue.length - 1) {
-      setCurrentVideoIndex(currentVideoIndex + 1);
-    }
-  };
-
-  const handleVideoSelect = (videoIndex: number) => {
-    setCurrentVideoIndex(videoIndex);
-  };
-
-  const currentVideo = videoQueue[currentVideoIndex];
-  const upNextVideos = videoQueue.slice(currentVideoIndex + 1);
-
   return (
     <div className={`min-h-screen bg-dark-bg text-text-primary transition-all duration-1000 ${isLoaded ? 'fade-in' : 'opacity-0'}`}>
       {/* Header */}
       <header className="glass border-b border-dark-border sticky top-0 z-50 slide-in-left">
         <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center space-x-3 flex-shrink-0">
               <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center pulse-glow morph-shape">
-                <span className="text-white font-bold text-lg">S</span>
+                <span className="text-white font-bold text-lg">W</span>
               </div>
-              <h1 className="text-2xl font-bold text-primary">
-                Sillycon
+              <h1
+                className="text-2xl font-bold text-primary cursor-pointer"
+                onClick={() => navigate('/')}
+              >
+                WeTube
               </h1>
             </div>
 
+            {/* Search Bar */}
+            <SearchBar />
+
             {/* Auth Section */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-4 flex-shrink-0">
               {user ? (
                 <div className="flex items-center space-x-3">
-                  <div className="flex items-center space-x-2 text-text-secondary">
+                  <button
+                    onClick={() => setShowUploadModal(true)}
+                    className="p-2 hover:bg-primary/20 rounded-lg transition-all duration-300 text-primary"
+                    title="Upload Video"
+                  >
+                    <Upload size={20} />
+                  </button>
+                  <div
+                    className="flex items-center space-x-2 text-text-secondary cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => navigate(`/channel/${user.uid}`)}
+                  >
                     <User size={18} />
-                    <span className="text-sm">{user.email}</span>
+                    <span className="text-sm hidden md:inline">{user.displayName || user.email}</span>
                   </div>
+                  <button
+                    onClick={() => navigate('/studio')}
+                    className="p-2 hover:bg-primary/20 rounded-lg transition-all duration-300 text-primary"
+                    title="Creator Studio"
+                  >
+                    <LayoutDashboard size={20} />
+                  </button>
                   <button
                     onClick={handleSignOut}
                     className="flex items-center space-x-2 px-4 py-2 glass hover:bg-primary/20 rounded-lg transition-all duration-300 text-sm"
                   >
                     <LogOut size={16} />
-                    <span>Sign Out</span>
+                    <span className="hidden md:inline">Sign Out</span>
                   </button>
                 </div>
               ) : (
@@ -144,22 +162,42 @@ function App() {
         </div>
       </header>
 
-      {currentVideo && (
-        <VideoPlayer
-          video={currentVideo}
-          upNextVideos={upNextVideos}
-          onVideoUpload={handleVideoUpload}
-          onNextVideo={handleNextVideo}
-          onVideoSelect={handleVideoSelect}
-          currentVideoIndex={currentVideoIndex}
-        />
-      )}
+      <main className="flex-1">
+        <Routes>
+          <Route path="/" element={<HomePage videos={videoQueue} />} />
+          <Route
+            path="/watch/:id"
+            element={
+              <WatchPage
+                videos={videoQueue}
+                onVideoUpload={handleVideoUpload}
+              />
+            }
+          />
+          <Route path="/search" element={<SearchResultsPage />} />
+          <Route path="/channel/:id" element={<ChannelPage />} />
+          <Route path="/studio" element={<StudioPage />} />
+        </Routes>
+      </main>
 
       {/* Authentication Modal */}
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-        onAuthSuccess={() => setShowAuthModal(false)}
+        onAuthSuccess={() => {
+          setShowAuthModal(false);
+          // Optional: navigate to profile
+        }}
+      />
+
+      {/* Upload Modal */}
+      <VideoUploadModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onVideoUploaded={(video) => {
+          handleVideoUpload(video);
+          // Optionally navigate to the video
+        }}
       />
     </div>
   );
