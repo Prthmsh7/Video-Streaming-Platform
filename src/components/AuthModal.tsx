@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { auth, db } from '../lib/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -42,54 +44,44 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess })
     try {
       if (isLogin) {
         // Sign in
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password: password
-        });
-
-        if (error) throw error;
-
-        if (data.user) {
-          onAuthSuccess();
-          handleClose();
-        }
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+        onAuthSuccess();
+        handleClose();
       } else {
         // Sign up
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password: password,
-          options: {
-            data: {
-              full_name: fullName.trim(),
-              username: username.trim()
-            }
-          }
+        const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const user = userCredential.user;
+
+        // Update profile
+        await updateProfile(user, {
+          displayName: fullName.trim()
         });
 
-        if (error) throw error;
+        // Create profile in Firestore
+        await setDoc(doc(db, 'users', user.uid), {
+          username: username.trim(),
+          full_name: fullName.trim(),
+          email: email.trim(),
+          subscribers_count: 0,
+          created_at: new Date().toISOString()
+        });
 
-        if (data.user) {
-          // Create profile
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: data.user.id,
-              username: username.trim(),
-              full_name: fullName.trim(),
-              subscribers_count: 0
-            });
-
-          if (profileError) {
-            console.error('Profile creation error:', profileError);
-          }
-
-          onAuthSuccess();
-          handleClose();
-        }
+        onAuthSuccess();
+        handleClose();
       }
     } catch (error: any) {
       console.error('Auth error:', error);
-      setError(error.message || 'Authentication failed');
+      let errorMessage = 'Authentication failed';
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'Email is already in use';
+      } else if (error.code === 'auth/wrong-password') {
+        errorMessage = 'Invalid password';
+      } else if (error.code === 'auth/user-not-found') {
+        errorMessage = 'User not found';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -105,7 +97,7 @@ const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose, onAuthSuccess })
           <h2 className="text-xl font-bold text-text-primary">
             {isLogin ? 'Sign In' : 'Create Account'}
           </h2>
-          <button 
+          <button
             onClick={handleClose}
             disabled={isLoading}
             className="p-2 hover:bg-primary/20 rounded-lg transition-all duration-300 disabled:opacity-50"

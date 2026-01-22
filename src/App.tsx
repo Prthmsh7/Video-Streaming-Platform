@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import VideoPlayer from './components/VideoPlayer';
 import AuthModal from './components/AuthModal';
 import { Video } from './types/Video';
-import { supabase } from './lib/supabase';
+import { auth } from './lib/firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { User, LogOut } from 'lucide-react';
 
 function App() {
@@ -65,20 +66,19 @@ function App() {
 
   // Listen for auth changes
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user || null);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
     });
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
   const checkAuthStatus = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    setUser(user);
+    setUser(auth.currentUser);
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await signOut(auth);
     setUser(null);
   };
 
@@ -113,7 +113,7 @@ function App() {
                 Sillycon
               </h1>
             </div>
-            
+
             {/* Auth Section */}
             <div className="flex items-center space-x-4">
               {user ? (
@@ -145,7 +145,7 @@ function App() {
       </header>
 
       {currentVideo && (
-        <VideoPlayer 
+        <VideoPlayer
           video={currentVideo}
           upNextVideos={upNextVideos}
           onVideoUpload={handleVideoUpload}
@@ -156,7 +156,7 @@ function App() {
       )}
 
       {/* Authentication Modal */}
-      <AuthModal 
+      <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
         onAuthSuccess={() => setShowAuthModal(false)}
