@@ -14,6 +14,16 @@ const firebaseConfig = {
     measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Validate that all required config values are present
+const requiredKeys = ['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'] as const;
+const missingKeys = requiredKeys.filter(key => !firebaseConfig[key]);
+
+if (missingKeys.length > 0) {
+    console.error(`Firebase configuration error: Missing environment variables for ${missingKeys.join(', ')}`);
+    // Throwing an error here will prevent the app from crashing silently with "Missing App configuration value: projectId"
+    // and instead provide a clearer message in the console.
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 export const analytics = getAnalytics(app);
